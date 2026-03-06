@@ -1,0 +1,98 @@
+---
+title: 'Reports by Chain'
+api: 'GET /api/reports/by-cadena'
+description: 'Get scrap data aggregated by production chain'
+---
+
+## Overview
+
+Retrieve scrap records grouped by production chain (cadena) to analyze which production lines are generating the most waste.
+
+## Authentication
+
+Requires valid JWT token with `view_area_reports` or `view_global_reports` permission.
+
+```
+Authorization: Bearer <token>
+```
+
+## Query Parameters
+
+<ParamField query="fecha_inicio" type="string">
+  Start date filter (YYYY-MM-DD format or ISO datetime)
+</ParamField>
+
+<ParamField query="fecha_fin" type="string">
+  End date filter (YYYY-MM-DD format or ISO datetime)
+</ParamField>
+
+## Request Example
+
+<CodeGroup>
+```bash cURL
+curl -X GET "http://localhost:3001/api/reports/by-cadena?fecha_inicio=2024-03-01&fecha_fin=2024-03-31" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+```javascript JavaScript
+const getByCadena = async (token, dateRange) => {
+  const params = new URLSearchParams();
+  if (dateRange?.start) params.append('fecha_inicio', dateRange.start);
+  if (dateRange?.end) params.append('fecha_fin', dateRange.end);
+  
+  const response = await fetch(`http://localhost:3001/api/reports/by-cadena?${params}`, {
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+  return response.json();
+};
+```
+</CodeGroup>
+
+## Response
+
+Returns an array of chain statistics ordered by cost (descending).
+
+<ResponseField name="name" type="string">
+  Production chain identifier (CADENA value)
+</ResponseField>
+
+<ResponseField name="cantidad" type="number">
+  Total scrap quantity for this chain
+</ResponseField>
+
+<ResponseField name="costo" type="number">
+  Total scrap cost for this chain
+</ResponseField>
+
+## Response Example
+
+```json
+[
+  {
+    "name": "GNT1",
+    "cantidad": 350,
+    "costo": 12450.75
+  },
+  {
+    "name": "HNS2",
+    "cantidad": 290,
+    "costo": 10230.50
+  },
+  {
+    "name": "WC3",
+    "cantidad": 245,
+    "costo": 8975.25
+  }
+]
+```
+
+## Related Endpoints
+
+<CardGroup cols={2}>
+  <Card title="By Area" icon="building" href="/api/reports/by-area">
+    Scrap aggregated by area
+  </Card>
+  <Card title="By Shift" icon="clock" href="/api/reports/by-turno">
+    Scrap aggregated by shift
+  </Card>
+</CardGroup>

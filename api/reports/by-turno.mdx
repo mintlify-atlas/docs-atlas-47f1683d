@@ -1,0 +1,107 @@
+---
+title: 'Reports by Shift'
+api: 'GET /api/reports/by-turno'
+description: 'Get scrap data aggregated by shift'
+---
+
+## Overview
+
+Retrieve scrap records grouped by shift (turno) to analyze performance across different work shifts. Useful for identifying shift-specific quality issues.
+
+## Authentication
+
+Requires valid JWT token with `view_area_reports` or `view_global_reports` permission.
+
+```
+Authorization: Bearer <token>
+```
+
+## Query Parameters
+
+<ParamField query="fecha_inicio" type="string">
+  Start date filter (YYYY-MM-DD format or ISO datetime)
+</ParamField>
+
+<ParamField query="fecha_fin" type="string">
+  End date filter (YYYY-MM-DD format or ISO datetime)
+</ParamField>
+
+## Request Example
+
+<CodeGroup>
+```bash cURL - All Time
+curl -X GET http://localhost:3001/api/reports/by-turno \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+```bash cURL - Date Range
+curl -X GET "http://localhost:3001/api/reports/by-turno?fecha_inicio=2024-03-01&fecha_fin=2024-03-31" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+```javascript JavaScript
+const getByShift = async (token, dateRange) => {
+  const params = new URLSearchParams();
+  if (dateRange?.start) params.append('fecha_inicio', dateRange.start);
+  if (dateRange?.end) params.append('fecha_fin', dateRange.end);
+  
+  const response = await fetch(`http://localhost:3001/api/reports/by-turno?${params}`, {
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+  return response.json();
+};
+```
+</CodeGroup>
+
+## Response
+
+Returns an array of shift statistics.
+
+<ResponseField name="name" type="string">
+  Shift identifier (TURNO value)
+</ResponseField>
+
+<ResponseField name="cantidad" type="number">
+  Total scrap quantity for this shift
+</ResponseField>
+
+<ResponseField name="costo" type="number">
+  Total scrap cost for this shift
+</ResponseField>
+
+## Response Example
+
+```json
+[
+  {
+    "name": "1",
+    "cantidad": 520,
+    "costo": 17256.30
+  },
+  {
+    "name": "2",
+    "cantidad": 480,
+    "costo": 15890.45
+  },
+  {
+    "name": "3",
+    "cantidad": 380,
+    "costo": 12450.75
+  }
+]
+```
+
+<Note>
+  Results are ordered by TURNO field (shift identifier), not by cost or quantity.
+</Note>
+
+## Related Endpoints
+
+<CardGroup cols={2}>
+  <Card title="By Area" icon="building" href="/api/reports/by-area">
+    Scrap aggregated by area
+  </Card>
+  <Card title="By Chain" icon="link" href="/api/reports/by-cadena">
+    Scrap aggregated by production chain
+  </Card>
+</CardGroup>

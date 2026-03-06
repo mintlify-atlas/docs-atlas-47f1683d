@@ -1,0 +1,312 @@
+---
+title: 'Scrap Statistics'
+api: 'GET /api/scrap/stats'
+description: 'Get aggregated scrap statistics for dashboard'
+---
+
+## Overview
+
+Retrieve comprehensive scrap statistics including today, week, and month totals, top areas, top failures, trends, and aggregations. This endpoint powers the dashboard view.
+
+## Authentication
+
+Requires valid JWT token.
+
+```
+Authorization: Bearer <token>
+```
+
+## Query Parameters
+
+No query parameters required. The endpoint automatically calculates:
+- Today's data (current date)
+- Last 7 days data
+- Last 30 days data
+
+## Request Example
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:3001/api/scrap/stats \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+```javascript JavaScript
+const getStats = async (token) => {
+  const response = await fetch('http://localhost:3001/api/scrap/stats', {
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+  return response.json();
+};
+```
+
+```typescript TypeScript
+interface ScrapStats {
+  hoy: { cantidad: number; costo: number };
+  semana: { cantidad: number; costo: number };
+  mes: { cantidad: number; costo: number };
+  topAreaHoy: { AREA: string; cantidad: number };
+  topFallaHoy: { MODO_FALLA: string; cantidad: number };
+  porArea: Array<{ AREA: string; cantidad: number; costo: number }>;
+  porTurno: Array<{ TURNO: string; cantidad: number; costo: number }>;
+  porCadena: Array<{ CADENA: string; cantidad: number; costo: number }>;
+  tendencia: Array<{ fecha: string; cantidad: number; costo: number }>;
+  topPartes: Array<{ NP: string; cantidad: number; costo: number }>;
+  topFallas: Array<{ MODO_FALLA: string; cantidad: number }>;
+  totalRegistros: number;
+}
+
+const getStats = async (token: string): Promise<ScrapStats> => {
+  const response = await fetch('http://localhost:3001/api/scrap/stats', {
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+  return response.json();
+};
+```
+</CodeGroup>
+
+## Response
+
+<ResponseField name="hoy" type="object">
+  Today's statistics
+  <Expandable title="properties">
+    <ResponseField name="cantidad" type="number">
+      Number of scrap records today
+    </ResponseField>
+    <ResponseField name="costo" type="number">
+      Total cost of scrap today
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="semana" type="object">
+  Last 7 days statistics
+  <Expandable title="properties">
+    <ResponseField name="cantidad" type="number">
+      Number of scrap records in last 7 days
+    </ResponseField>
+    <ResponseField name="costo" type="number">
+      Total cost of scrap in last 7 days
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="mes" type="object">
+  Last 30 days statistics
+  <Expandable title="properties">
+    <ResponseField name="cantidad" type="number">
+      Number of scrap records in last 30 days
+    </ResponseField>
+    <ResponseField name="costo" type="number">
+      Total cost of scrap in last 30 days
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="topAreaHoy" type="object">
+  Area with most scrap today
+  <Expandable title="properties">
+    <ResponseField name="AREA" type="string">
+      Area name
+    </ResponseField>
+    <ResponseField name="cantidad" type="number">
+      Number of scrap records
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="topFallaHoy" type="object">
+  Most common failure mode today
+  <Expandable title="properties">
+    <ResponseField name="MODO_FALLA" type="string">
+      Failure mode description
+    </ResponseField>
+    <ResponseField name="cantidad" type="number">
+      Number of occurrences
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="porArea" type="array">
+  Scrap breakdown by area (last 30 days)
+  <Expandable title="item properties">
+    <ResponseField name="AREA" type="string">
+      Area name
+    </ResponseField>
+    <ResponseField name="cantidad" type="number">
+      Total quantity
+    </ResponseField>
+    <ResponseField name="costo" type="number">
+      Total cost
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="porTurno" type="array">
+  Scrap breakdown by shift (last 30 days)
+  <Expandable title="item properties">
+    <ResponseField name="TURNO" type="string">
+      Shift identifier
+    </ResponseField>
+    <ResponseField name="cantidad" type="number">
+      Total quantity
+    </ResponseField>
+    <ResponseField name="costo" type="number">
+      Total cost
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="porCadena" type="array">
+  Scrap breakdown by production chain (last 30 days)
+  <Expandable title="item properties">
+    <ResponseField name="CADENA" type="string">
+      Chain identifier
+    </ResponseField>
+    <ResponseField name="cantidad" type="number">
+      Total quantity
+    </ResponseField>
+    <ResponseField name="costo" type="number">
+      Total cost
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="tendencia" type="array">
+  Daily trend data (last 30 days)
+  <Expandable title="item properties">
+    <ResponseField name="fecha" type="string">
+      Date (YYYY-MM-DD)
+    </ResponseField>
+    <ResponseField name="cantidad" type="number">
+      Total quantity for that day
+    </ResponseField>
+    <ResponseField name="costo" type="number">
+      Total cost for that day
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="topPartes" type="array">
+  Top 10 parts by cost (last 30 days)
+  <Expandable title="item properties">
+    <ResponseField name="NP" type="string">
+      Part number
+    </ResponseField>
+    <ResponseField name="cantidad" type="number">
+      Total quantity
+    </ResponseField>
+    <ResponseField name="costo" type="number">
+      Total cost
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="topFallas" type="array">
+  Top 10 failure modes by occurrence (last 30 days)
+  <Expandable title="item properties">
+    <ResponseField name="MODO_FALLA" type="string">
+      Failure mode description
+    </ResponseField>
+    <ResponseField name="cantidad" type="number">
+      Number of occurrences
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="totalRegistros" type="number">
+  Total number of non-deleted scrap records in database
+</ResponseField>
+
+## Response Example
+
+```json
+{
+  "hoy": {
+    "cantidad": 45,
+    "costo": 1523.50
+  },
+  "semana": {
+    "cantidad": 312,
+    "costo": 10890.25
+  },
+  "mes": {
+    "cantidad": 1240,
+    "costo": 42156.75
+  },
+  "topAreaHoy": {
+    "AREA": "Harness Assembly",
+    "cantidad": 18
+  },
+  "topFallaHoy": {
+    "MODO_FALLA": "Conector dañado",
+    "cantidad": 12
+  },
+  "porArea": [
+    { "AREA": "Harness Assembly", "cantidad": 456, "costo": 15234.50 },
+    { "AREA": "Final QC", "cantidad": 298, "costo": 9875.25 }
+  ],
+  "porTurno": [
+    { "TURNO": "1", "cantidad": 520, "costo": 17256.30 },
+    { "TURNO": "2", "cantidad": 480, "costo": 15890.45 }
+  ],
+  "porCadena": [
+    { "CADENA": "GNT1", "cantidad": 350, "costo": 12450.75 },
+    { "CADENA": "HNS2", "cantidad": 290, "costo": 10230.50 }
+  ],
+  "tendencia": [
+    { "fecha": "2024-03-01", "cantidad": 38, "costo": 1290.50 },
+    { "fecha": "2024-03-02", "cantidad": 42, "costo": 1450.75 }
+  ],
+  "topPartes": [
+    { "NP": "12345678", "cantidad": 85, "costo": 3250.00 },
+    { "NP": "87654321", "cantidad": 62, "costo": 2890.50 }
+  ],
+  "topFallas": [
+    { "MODO_FALLA": "Conector dañado", "cantidad": 125 },
+    { "MODO_FALLA": "Material defectuoso", "cantidad": 98 }
+  ],
+  "totalRegistros": 15680
+}
+```
+
+## Use Cases
+
+<AccordionGroup>
+  <Accordion title="Dashboard KPI Cards">
+    Use `hoy`, `semana`, and `mes` fields to display KPI cards showing today's metrics, weekly trends, and monthly totals.
+  </Accordion>
+  
+  <Accordion title="Chart Visualizations">
+    Use `porArea`, `porTurno`, `porCadena` for pie/bar charts. Use `tendencia` for line charts showing daily trends.
+  </Accordion>
+  
+  <Accordion title="Top Offenders Widget">
+    Display `topPartes` and `topFallas` in ranked lists to identify problematic parts and common failure modes.
+  </Accordion>
+  
+  <Accordion title="Quick Insights">
+    Use `topAreaHoy` and `topFallaHoy` to show which area and failure mode are most problematic today.
+  </Accordion>
+</AccordionGroup>
+
+## Related Endpoints
+
+<CardGroup cols={2}>
+  <Card title="List Scrap" icon="list" href="/api/scrap/list">
+    Get detailed scrap records
+  </Card>
+  <Card title="Create Scrap" icon="plus" href="/api/scrap/create">
+    Register new scrap entry
+  </Card>
+  <Card title="Summary Report" icon="chart-simple" href="/api/reports/summary">
+    Get filtered summary statistics
+  </Card>
+  <Card title="Trend Report" icon="chart-line" href="/api/reports/trend">
+    Get daily trend analysis
+  </Card>
+</CardGroup>

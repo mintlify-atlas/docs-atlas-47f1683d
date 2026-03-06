@@ -72,7 +72,7 @@
           },
           {
             "group": "Scrap Management",
-            "pages": ["api/scrap/create", "api/scrap/list", "api/scrap/update", "api/scrap/delete"]
+            "pages": ["api/scrap/create", "api/scrap/list", "api/scrap/stats"]
           },
           {
             "group": "Catalogs",
@@ -91,7 +91,11 @@
               "api/reports/summary",
               "api/reports/by-area",
               "api/reports/by-category",
-              "api/reports/trends"
+              "api/reports/by-turno",
+              "api/reports/by-cadena",
+              "api/reports/top-parts",
+              "api/reports/top-fallas",
+              "api/reports/trend"
             ]
           },
           {

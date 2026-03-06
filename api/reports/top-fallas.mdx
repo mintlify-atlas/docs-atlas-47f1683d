@@ -1,0 +1,123 @@
+---
+title: 'Top Failure Modes'
+api: 'GET /api/reports/top-fallas'
+description: 'Get most common failure modes'
+---
+
+## Overview
+
+Retrieve the top N failure modes by occurrence count to identify the most common quality issues.
+
+## Authentication
+
+Requires valid JWT token with `view_area_reports` or `view_global_reports` permission.
+
+```
+Authorization: Bearer <token>
+```
+
+## Query Parameters
+
+<ParamField query="fecha_inicio" type="string">
+  Start date filter (YYYY-MM-DD format or ISO datetime)
+</ParamField>
+
+<ParamField query="fecha_fin" type="string">
+  End date filter (YYYY-MM-DD format or ISO datetime)
+</ParamField>
+
+<ParamField query="limit" type="number" default={10}>
+  Number of top failure modes to return
+</ParamField>
+
+## Request Example
+
+<CodeGroup>
+```bash cURL - Top 10
+curl -X GET "http://localhost:3001/api/reports/top-fallas?limit=10" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+```bash cURL - Top 15 with Date Range
+curl -X GET "http://localhost:3001/api/reports/top-fallas?limit=15&fecha_inicio=2024-03-01&fecha_fin=2024-03-31" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+```javascript JavaScript
+const getTopFailures = async (token, limit = 10, dateRange) => {
+  const params = new URLSearchParams({ limit });
+  if (dateRange?.start) params.append('fecha_inicio', dateRange.start);
+  if (dateRange?.end) params.append('fecha_fin', dateRange.end);
+  
+  const response = await fetch(`http://localhost:3001/api/reports/top-fallas?${params}`, {
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+  return response.json();
+};
+```
+</CodeGroup>
+
+## Response
+
+Returns an array of failure mode statistics ordered by count (descending).
+
+<ResponseField name="name" type="string">
+  Failure mode description (MODO_FALLA value)
+</ResponseField>
+
+<ResponseField name="count" type="number">
+  Number of occurrences of this failure mode
+</ResponseField>
+
+<ResponseField name="costo" type="number">
+  Total scrap cost associated with this failure mode
+</ResponseField>
+
+## Response Example
+
+```json
+[
+  {
+    "name": "Conector dañado",
+    "count": 125,
+    "costo": 4250.50
+  },
+  {
+    "name": "Material defectuoso",
+    "count": 98,
+    "costo": 3890.25
+  },
+  {
+    "name": "Error de ensamble",
+    "count": 87,
+    "costo": 2975.75
+  },
+  {
+    "name": "Pieza fuera de especificación",
+    "count": 76,
+    "costo": 2650.00
+  }
+]
+```
+
+<Note>
+  Failure modes with value "-" (no failure specified) are excluded from results.
+</Note>
+
+## Use Cases
+
+- **Root Cause Analysis**: Identify systemic quality issues affecting production
+- **Process Improvement**: Prioritize corrective actions based on failure frequency
+- **Training Programs**: Develop targeted training for most common failure modes
+- **Supplier Feedback**: Communicate recurring material defects to suppliers
+
+## Related Endpoints
+
+<CardGroup cols={2}>
+  <Card title="Top Parts" icon="boxes-stacked" href="/api/reports/top-parts">
+    Parts with highest scrap cost
+  </Card>
+  <Card title="By Category" icon="tags" href="/api/reports/by-category">
+    Scrap by category
+  </Card>
+</CardGroup>

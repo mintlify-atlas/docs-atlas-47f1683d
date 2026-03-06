@@ -1,0 +1,113 @@
+---
+title: 'Top Parts by Cost'
+api: 'GET /api/reports/top-parts'
+description: 'Get parts with highest scrap cost'
+---
+
+## Overview
+
+Retrieve the top N parts by scrap cost to identify which parts are most expensive to waste.
+
+## Authentication
+
+Requires valid JWT token with `view_area_reports` or `view_global_reports` permission.
+
+```
+Authorization: Bearer <token>
+```
+
+## Query Parameters
+
+<ParamField query="fecha_inicio" type="string">
+  Start date filter (YYYY-MM-DD format or ISO datetime)
+</ParamField>
+
+<ParamField query="fecha_fin" type="string">
+  End date filter (YYYY-MM-DD format or ISO datetime)
+</ParamField>
+
+<ParamField query="limit" type="number" default={10}>
+  Number of top parts to return
+</ParamField>
+
+## Request Example
+
+<CodeGroup>
+```bash cURL - Top 10
+curl -X GET "http://localhost:3001/api/reports/top-parts?limit=10" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+```bash cURL - Top 20 with Date Range
+curl -X GET "http://localhost:3001/api/reports/top-parts?limit=20&fecha_inicio=2024-03-01&fecha_fin=2024-03-31" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+```javascript JavaScript
+const getTopParts = async (token, limit = 10, dateRange) => {
+  const params = new URLSearchParams({ limit });
+  if (dateRange?.start) params.append('fecha_inicio', dateRange.start);
+  if (dateRange?.end) params.append('fecha_fin', dateRange.end);
+  
+  const response = await fetch(`http://localhost:3001/api/reports/top-parts?${params}`, {
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+  return response.json();
+};
+```
+</CodeGroup>
+
+## Response
+
+Returns an array of part statistics ordered by cost (descending).
+
+<ResponseField name="name" type="string">
+  Part number (NP value)
+</ResponseField>
+
+<ResponseField name="costo" type="number">
+  Total scrap cost for this part
+</ResponseField>
+
+<ResponseField name="cantidad" type="number">
+  Total scrap quantity for this part
+</ResponseField>
+
+## Response Example
+
+```json
+[
+  {
+    "name": "12345678",
+    "costo": 3250.00,
+    "cantidad": 85
+  },
+  {
+    "name": "87654321",
+    "costo": 2890.50,
+    "cantidad": 62
+  },
+  {
+    "name": "11223344",
+    "costo": 2450.75,
+    "cantidad": 98
+  }
+]
+```
+
+## Use Cases
+
+- **Cost Reduction**: Identify most expensive parts to prioritize process improvements
+- **Supplier Quality**: Track parts from specific suppliers with high scrap rates
+- **Training Focus**: Target operator training on high-cost parts
+
+## Related Endpoints
+
+<CardGroup cols={2}>
+  <Card title="Top Failures" icon="triangle-exclamation" href="/api/reports/top-fallas">
+    Most common failure modes
+  </Card>
+  <Card title="Summary Report" icon="chart-simple" href="/api/reports/summary">
+    Overall statistics
+  </Card>
+</CardGroup>
