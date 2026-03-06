@@ -1,0 +1,136 @@
+{
+  "projectType": "saas",
+  "projectName": "APTIV Scrap Control",
+  "projectDescription": "Manufacturing scrap tracking and analytics system for APTIV production lines with real-time monitoring, reporting, and tolerance management.",
+  "theme": "aspen",
+  "primaryColor": "#E4002B",
+  "lightColor": "#FF4D6D",
+  "darkColor": "#B30022",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": ["introduction", "quickstart", "installation"]
+          },
+          {
+            "group": "Core Features",
+            "pages": [
+              "features/scrap-registration",
+              "features/dashboard",
+              "features/reports",
+              "features/tolerances"
+            ]
+          },
+          {
+            "group": "User Management",
+            "pages": [
+              "user-management/roles-permissions",
+              "user-management/authentication",
+              "user-management/audit-logs"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/catalogs",
+              "configuration/production-lines",
+              "configuration/shifts-areas",
+              "configuration/barcode-scanner"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/standalone",
+              "deployment/docker",
+              "deployment/network-setup"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Authentication",
+            "pages": ["api/auth/login", "api/auth/session"]
+          },
+          {
+            "group": "Scrap Management",
+            "pages": ["api/scrap/create", "api/scrap/list", "api/scrap/update", "api/scrap/delete"]
+          },
+          {
+            "group": "Catalogs",
+            "pages": [
+              "api/catalogs/areas",
+              "api/catalogs/parts",
+              "api/catalogs/failures",
+              "api/catalogs/shifts",
+              "api/catalogs/chains",
+              "api/catalogs/lines"
+            ]
+          },
+          {
+            "group": "Reports",
+            "pages": [
+              "api/reports/summary",
+              "api/reports/by-area",
+              "api/reports/by-category",
+              "api/reports/trends"
+            ]
+          },
+          {
+            "group": "Administration",
+            "pages": [
+              "api/admin/users",
+              "api/admin/roles",
+              "api/admin/tolerances",
+              "api/admin/audit",
+              "api/admin/backup"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Real-time scrap tracking with barcode scanner support",
+    "Role-based access control with 4 permission levels",
+    "Interactive dashboard with charts and analytics",
+    "Configurable tolerance thresholds with alerts",
+    "Comprehensive reporting by area, shift, and category",
+    "Offline-first mode with localStorage fallback",
+    "Multi-shift and production line management",
+    "Audit logging for compliance tracking",
+    "CSV import/export for data migration",
+    "Docker-based deployment with MySQL backend"
+  ],
+  "publicApiSurface": [
+    "POST /api/auth/login",
+    "GET /api/scrap",
+    "POST /api/scrap",
+    "PUT /api/scrap/:id",
+    "DELETE /api/scrap/:id",
+    "GET /api/catalogs/areas",
+    "GET /api/catalogs/catnp",
+    "GET /api/catalogs/fallas",
+    "GET /api/catalogs/turnos",
+    "GET /api/catalogs/cadenas",
+    "GET /api/catalogs/lineas",
+    "GET /api/reports/summary",
+    "GET /api/reports/by-area",
+    "GET /api/reports/by-category",
+    "GET /api/reports/trend",
+    "GET /api/users",
+    "POST /api/users",
+    "PUT /api/users/:id",
+    "GET /api/tolerances",
+    "POST /api/tolerances",
+    "GET /api/audit",
+    "GET /api/backup/export",
+    "POST /api/backup/import"
+  ]
+}
