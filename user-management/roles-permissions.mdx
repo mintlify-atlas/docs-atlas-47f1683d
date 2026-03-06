@@ -1,0 +1,317 @@
+---
+title: "Roles and Permissions"
+description: "Configure role-based access control with 4 permission levels"
+---
+
+## Overview
+
+APTIV Scrap Control implements a 4-tier role-based access control (RBAC) system to ensure users only access features appropriate for their responsibilities.
+
+## Role Hierarchy
+
+<CardGroup cols={2}>
+  <Card title="Administrator" icon="user-crown">
+    Full system access with user and permission management
+  </Card>
+  <Card title="Quality (Calidad)" icon="badge-check">
+    Quality control with reporting and catalog management
+  </Card>
+  <Card title="Supervisor" icon="user-tie">
+    Production line supervision with area-level reporting
+  </Card>
+  <Card title="Operator (Operador)" icon="user">
+    Basic scrap registration and record viewing
+  </Card>
+</CardGroup>
+
+## Permission Matrix
+
+The following table shows the complete permission matrix for all roles:
+
+| Permission | Admin | Quality | Supervisor | Operator |
+|-----------|-------|---------|-----------|----------|
+| Register scrap | ✅ | ✅ | ✅ | ✅ |
+| View own records | ✅ | ✅ | ✅ | ✅ |
+| View area reports | ✅ | ✅ | ✅ | ❌ |
+| View global reports | ✅ | ✅ | ❌ | ❌ |
+| Edit today's records | ✅ | ✅ | ✅ | ❌ |
+| Delete records | ✅ | ✅ | ❌ | ❌ |
+| Manage catalogs | ✅ | ✅ | ❌ | ❌ |
+| Manage users | ✅ | ❌ | ❌ | ❌ |
+| Configure permissions | ✅ | ❌ | ❌ | ❌ |
+| Manage tolerances | ✅ | ✅ | ❌ | ❌ |
+| Export backups | ✅ | ❌ | ❌ | ❌ |
+| View audit logs | ✅ | ✅ | ❌ | ❌ |
+| Import CSV | ✅ | ✅ | ❌ | ❌ |
+| Export CSV | ✅ | ✅ | ✅ | ❌ |
+
+<Note>
+  Permissions are configurable from the administration panel. The matrix above shows default settings.
+</Note>
+
+## Permission Types
+
+### TypeScript Definition
+
+Permissions are defined as a union type in the system:
+
+```typescript types.ts
+export type PermissionKey =
+  | 'register_scrap'
+  | 'view_own_records'
+  | 'view_area_reports'
+  | 'view_global_reports'
+  | 'edit_today_records'
+  | 'delete_records'
+  | 'manage_catalogs'
+  | 'manage_users'
+  | 'manage_permissions'
+  | 'manage_tolerances'
+  | 'export_backup'
+  | 'view_audit'
+  | 'import_catalogs'
+  | 'export_catalogs';
+```
+
+### Detailed Permission Descriptions
+
+<AccordionGroup>
+  <Accordion title="register_scrap - Register Scrap Entries">
+    Allows users to create new scrap records. All roles have this permission as it's the primary function of the system.
+    
+    **Granted to**: Admin, Quality, Supervisor, Operator
+  </Accordion>
+  
+  <Accordion title="view_own_records - View Personal Records">
+    View scrap records created by the logged-in user. Essential for all users to verify their entries.
+    
+    **Granted to**: Admin, Quality, Supervisor, Operator
+  </Accordion>
+  
+  <Accordion title="view_area_reports - View Area-Level Reports">
+    Access reports filtered to the user's assigned production area. Required for line supervision.
+    
+    **Granted to**: Admin, Quality, Supervisor
+  </Accordion>
+  
+  <Accordion title="view_global_reports - View All Reports">
+    Access organization-wide reports across all areas and production lines. Required for quality analysis.
+    
+    **Granted to**: Admin, Quality
+  </Accordion>
+  
+  <Accordion title="edit_today_records - Edit Current Day Records">
+    Modify scrap entries created on the current day. Prevents historical data manipulation.
+    
+    **Granted to**: Admin, Quality, Supervisor
+  </Accordion>
+  
+  <Accordion title="delete_records - Delete Records">
+    Soft-delete scrap entries (marks as ELIMINADO=1). Required for correcting errors.
+    
+    **Granted to**: Admin, Quality
+  </Accordion>
+  
+  <Accordion title="manage_catalogs - Manage System Catalogs">
+    Create, update, and delete catalog entries (parts, defects, areas, shifts, lines).
+    
+    **Granted to**: Admin, Quality
+  </Accordion>
+  
+  <Accordion title="manage_users - User Account Management">
+    Create user accounts, reset passwords, assign roles, and deactivate users.
+    
+    **Granted to**: Admin only
+  </Accordion>
+  
+  <Accordion title="manage_permissions - Configure Role Permissions">
+    Modify the permission matrix and create custom roles. Highest-level administrative function.
+    
+    **Granted to**: Admin only
+  </Accordion>
+  
+  <Accordion title="manage_tolerances - Configure Tolerance Limits">
+    Set acceptable scrap thresholds by area, chain, line, or category.
+    
+    **Granted to**: Admin, Quality
+  </Accordion>
+  
+  <Accordion title="export_backup - Export System Backup">
+    Download complete database backups in JSON or SQL format.
+    
+    **Granted to**: Admin only
+  </Accordion>
+  
+  <Accordion title="view_audit - View Audit Logs">
+    Access the audit trail showing all system changes with user attribution.
+    
+    **Granted to**: Admin, Quality
+  </Accordion>
+  
+  <Accordion title="import_catalogs - Import Catalog Data">
+    Bulk import catalog entries from CSV files.
+    
+    **Granted to**: Admin, Quality
+  </Accordion>
+  
+  <Accordion title="export_catalogs - Export Catalog Data">
+    Download catalog data and reports in CSV format.
+    
+    **Granted to**: Admin, Quality, Supervisor
+  </Accordion>
+</AccordionGroup>
+
+## Role Data Structure
+
+```typescript types.ts
+export interface Rol {
+  id: number;
+  nombre: string;
+  descripcion: string;
+  activo: number;
+  es_sistema: number;  // 1 = system role (cannot be deleted)
+  permisos: string;    // JSON array of PermissionKey values
+}
+```
+
+### Database Schema
+
+```sql schema.sql
+CREATE TABLE IF NOT EXISTS roles (
+  id int AUTO_INCREMENT PRIMARY KEY,
+  nombre varchar(50) NOT NULL,
+  descripcion varchar(200) DEFAULT '',
+  activo TINYINT DEFAULT 1,
+  es_sistema TINYINT DEFAULT 0,
+  permisos TEXT DEFAULT NULL
+);
+
+CREATE TABLE IF NOT EXISTS permisos_rol (
+  id int AUTO_INCREMENT PRIMARY KEY,
+  rol_id int NOT NULL,
+  permiso varchar(50) NOT NULL,
+  FOREIGN KEY (rol_id) REFERENCES roles(id) ON DELETE CASCADE
+);
+```
+
+## Permission Checking
+
+### Frontend Permission Check
+
+The `usePermissions` hook provides a `can()` function to check permissions:
+
+```typescript useStore.ts
+export const usePermissions = () => {
+  const state = useAppState();
+  const { currentUser } = state;
+  
+  const can = (permission: PermissionKey): boolean => {
+    if (!currentUser) return false;
+    
+    // Parse permissions from user.permisos JSON string
+    try {
+      const permissions = JSON.parse(currentUser.permisos || '[]');
+      return permissions.includes(permission);
+    } catch {
+      return false;
+    }
+  };
+  
+  return { can };
+};
+```
+
+### Usage Example
+
+```tsx
+import { usePermissions } from './useStore';
+
+function MyComponent() {
+  const { can } = usePermissions();
+  
+  return (
+    <div>
+      {can('manage_users') && (
+        <button>Manage Users</button>
+      )}
+      
+      {can('view_global_reports') && (
+        <Link to="/reports">Global Reports</Link>
+      )}
+    </div>
+  );
+}
+```
+
+## Configuring Permissions
+
+<Steps>
+  <Step title="Access Permissions Page">
+    Navigate to **Permisos** in the sidebar (Admin only).
+  </Step>
+  
+  <Step title="Select Role">
+    Choose the role you want to modify from the role list.
+  </Step>
+  
+  <Step title="Toggle Permissions">
+    Check or uncheck permissions for the selected role. Changes apply immediately.
+  </Step>
+  
+  <Step title="Verify Changes">
+    Log in as a user with that role to verify the permission changes.
+  </Step>
+</Steps>
+
+<Warning>
+  **System Roles**: Roles with `es_sistema = 1` cannot be deleted. Modifying system role permissions affects all existing users with that role.
+</Warning>
+
+## Creating Custom Roles
+
+While the system ships with 4 default roles, administrators can create custom roles:
+
+```typescript
+const newRole: Rol = {
+  id: 0,  // Auto-generated
+  nombre: "Line Manager",
+  descripcion: "Manages specific production line",
+  activo: 1,
+  es_sistema: 0,  // Custom role (can be deleted)
+  permisos: JSON.stringify([
+    'register_scrap',
+    'view_own_records',
+    'view_area_reports',
+    'edit_today_records',
+    'export_catalogs'
+  ])
+};
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Principle of Least Privilege" icon="shield-check">
+    Grant users only the permissions they need for their job function
+  </Card>
+  <Card title="Regular Audits" icon="magnifying-glass">
+    Review user permissions quarterly to remove unnecessary access
+  </Card>
+  <Card title="Document Custom Roles" icon="file-lines">
+    Maintain documentation for any custom roles created
+  </Card>
+  <Card title="Test Permission Changes" icon="vial">
+    Always test with a non-admin account before rolling out changes
+  </Card>
+</CardGroup>
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="User Management" icon="users" href="/user-management/authentication">
+    Creating and managing user accounts
+  </Card>
+  <Card title="Audit Logs" icon="clock-rotate-left" href="/user-management/audit-logs">
+    Tracking permission changes and usage
+  </Card>
+</CardGroup>

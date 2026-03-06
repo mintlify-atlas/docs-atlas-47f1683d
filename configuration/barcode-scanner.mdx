@@ -1,0 +1,463 @@
+---
+title: 'Barcode Scanner Setup'
+description: 'Configure USB barcode scanners for rapid part and defect code entry'
+icon: 'barcode'
+---
+
+APTIV Scrap Control supports USB barcode scanners to accelerate scrap registration. Operators can scan part numbers and defect codes instead of manual selection.
+
+## Supported Scanner Types
+
+The system works with standard USB HID (Human Interface Device) barcode scanners configured as keyboard wedge devices.
+
+<CardGroup cols={2}>
+  <Card title="Code 128" icon="barcode">
+    High-density alphanumeric barcodes for part numbers
+  </Card>
+  <Card title="Code 39" icon="barcode">
+    Alphanumeric barcodes with legacy compatibility
+  </Card>
+  <Card title="QR Codes" icon="qrcode">
+    2D matrix codes for complex part identification
+  </Card>
+  <Card title="EAN/UPC" icon="barcode">
+    Standard product barcodes for commercial parts
+  </Card>
+  <Card title="DataMatrix" icon="grid">
+    Compact 2D codes for small components
+  </Card>
+  <Card title="Custom Formats" icon="code">
+    Any format supported by your scanner hardware
+  </Card>
+</CardGroup>
+
+---
+
+## Scanner Configuration
+
+From the installation guide (`INSTALACION.md:178-190`):
+
+<Steps>
+  <Step title="Configure Suffix">
+    **Program the scanner to append Enter (CR) at the end of each scan**
+    
+    Most scanners ship with a configuration barcode sheet. Scan the "Add CR Suffix" barcode to enable this.
+    
+    ```
+    Scanned data format: [BARCODE_DATA]<CR>
+    ```
+  </Step>
+  <Step title="Set Keyboard Mode">
+    **Ensure the scanner operates in HID keyboard mode**
+    
+    The scanner should emulate a standard USB keyboard. This is the default mode for most scanners.
+    
+    - No special drivers required
+    - Works on Windows, Linux, and MacOS
+    - Appears as a keyboard input device
+  </Step>
+  <Step title="Test Scan">
+    **Verify scanner operation**
+    
+    Open a text editor and scan a barcode. It should type the barcode value followed by a newline (as if you pressed Enter).
+  </Step>
+</Steps>
+
+<Note>
+**Important:** The scanner must be configured to add a carriage return (Enter key) after each scan. Without this, the system cannot distinguish between normal keyboard typing and scanner input.
+</Note>
+
+---
+
+## How Barcode Detection Works
+
+The system automatically detects barcode scanner input by analyzing keystroke timing:
+
+### Detection Logic
+
+```typescript
+// Simplified detection algorithm
+const SCAN_THRESHOLD_MS = 50; // Characters typed within 50ms = scanner
+
+let buffer = '';
+let lastKeyTime = 0;
+
+document.addEventListener('keypress', (e) => {
+  const now = Date.now();
+  const timeDelta = now - lastKeyTime;
+  
+  if (timeDelta < SCAN_THRESHOLD_MS) {
+    // Rapid input = scanner
+    buffer += e.key;
+  } else {
+    // Slow typing = human
+    buffer = e.key;
+  }
+  
+  if (e.key === 'Enter') {
+    // Scanner completed, process buffer
+    handleBarcodeScanned(buffer);
+    buffer = '';
+  }
+  
+  lastKeyTime = now;
+});
+```
+
+### Key Characteristics
+
+<Accordion title="Rapid Character Entry">
+  **Scanners type faster than humans**
+  
+  - Scanner: 10-30 characters in ~30-50ms
+  - Human: 10 characters takes ~1000-2000ms
+  
+  The system detects when characters arrive within 50ms of each other to identify scanner input.
+</Accordion>
+
+<Accordion title="Enter Key Termination">
+  **Scans always end with Enter**
+  
+  The scanner sends a carriage return (CR / Enter key) after the barcode data. This signals the end of the scan and triggers processing.
+</Accordion>
+
+<Accordion title="No Special Prefix Required">
+  **Auto-detection, no manual mode switching**
+  
+  The system automatically distinguishes scanner input from keyboard typing. Operators don't need to click a "Scan Mode" button.
+</Accordion>
+
+---
+
+## Barcode Field Mapping
+
+### Part Number Barcodes
+
+Scanning a part number barcode in the **NP (Part Number)** field:
+
+1. **Scanner reads barcode** (e.g., "NP-001-ARN")
+2. **System searches `catnp` catalog** for matching `NP` value
+3. **Auto-fills related fields:**
+   - **MATERIAL**: Cobre
+   - **PESO**: 0.125 kg
+   - **COSTO**: $2.50
+   - **TIPO**: Arnés
+   - **DESCRIPCION**: Arnés principal motor
+
+```typescript
+const catnp = [
+  { ID: 1, NP: 'NP-001-ARN', MATERIAL: 'Cobre', PESO: 0.125, COSTO: 2.50, ... }
+];
+
+// When "NP-001-ARN" is scanned:
+const part = catnp.find(p => p.NP === 'NP-001-ARN');
+// Auto-populate form fields with part data
+```
+
+<Note>
+If a scanned part number is not found in the catalog, the system displays an error message. The operator must either:
+- Manually select the part from the dropdown
+- Add the new part to the catalog first
+</Note>
+
+### Defect Code Barcodes
+
+Scanning a defect barcode in the **MODO_FALLA** field:
+
+1. **Scanner reads barcode** (e.g., "F-009-ARN")
+2. **System searches `fallas` catalog** for matching `FALLA_BARRA` value
+3. **Auto-selects defect:**
+   - **FALLA**: Terminal mal crimpada
+   - **AREA**: Arneses
+   - **CATEGORIA**: Proceso
+
+```typescript
+const fallas = [
+  { ID: 9, FALLA: 'Terminal mal crimpada', FALLA_BARRA: 'F-009-ARN', ... }
+];
+
+// When "F-009-ARN" is scanned:
+const defect = fallas.find(f => f.FALLA_BARRA === 'F-009-ARN');
+// Auto-select defect in dropdown
+```
+
+---
+
+## Barcode Label Design
+
+### Part Number Labels
+
+Recommended label layout for part numbers:
+
+```
+┌─────────────────────────┐
+│  APTIV - Part Number    │
+│                         │
+│  █▌▐ ███ █▌▌█ █▌▐ ███  │  ← Code 128 barcode
+│     NP-001-ARN          │  ← Human-readable
+│                         │
+│  Arnés principal motor  │  ← Description
+│  Cobre | 0.125 kg       │  ← Material & Weight
+└─────────────────────────┘
+```
+
+**Best Practices:**
+- Use Code 128 for compact size and high density
+- Include human-readable text below barcode
+- Add description and key specs for visual verification
+- Print on durable labels (laminated or synthetic)
+
+### Defect Code Labels
+
+Recommended label layout for defect codes:
+
+```
+┌─────────────────────────┐
+│  APTIV - Defect Code    │
+│                         │
+│  █▌▐ ███ █▌▌█ █▌▐ ███  │  ← Code 128 barcode
+│       F-009-ARN         │  ← Human-readable
+│                         │
+│  Terminal mal crimpada  │  ← Defect description
+│  Área: Arneses          │  ← Associated area
+└─────────────────────────┘
+```
+
+**Display Strategy:**
+- Post defect code labels at each workstation
+- Group by area for easy scanning
+- Laminate for durability in production environment
+
+---
+
+## Workflow with Scanner
+
+Typical scrap registration workflow using a barcode scanner:
+
+<Steps>
+  <Step title="Operator Collects Scrap">
+    Operator identifies defective parts and places them in scrap bin
+  </Step>
+  <Step title="Open Registration Form">
+    Operator logs into APTIV Scrap Control and clicks **Registrar Scrap**
+  </Step>
+  <Step title="Scan Part Number">
+    Click in the **NP** field and scan the part number barcode
+    
+    - System auto-fills Material, Weight, Cost, Type
+  </Step>
+  <Step title="Enter Quantity">
+    Manually type the number of defective pieces (e.g., 15)
+  </Step>
+  <Step title="Scan Defect Code">
+    Click in the **MODO_FALLA** field and scan the defect barcode
+    
+    - System auto-selects the defect reason
+  </Step>
+  <Step title="Add Details">
+    Select area, chain, line, and shift (usually pre-filled by user profile)
+  </Step>
+  <Step title="Submit">
+    Click **Guardar** to register the scrap record
+  </Step>
+</Steps>
+
+<Note>
+**Time Savings:** Using a barcode scanner reduces registration time from ~60 seconds to ~15 seconds per record.
+</Note>
+
+---
+
+## Generating Barcodes
+
+### Online Barcode Generators
+
+<CardGroup cols={2}>
+  <Card title="Barcode Generator" icon="external-link">
+    Free online tool for Code 128, Code 39, QR codes
+    
+    [barcode-generator.org](https://www.barcode-generator.org/)
+  </Card>
+  <Card title="QR Code Generator" icon="qrcode">
+    Generate QR codes for part numbers
+    
+    [qr-code-generator.com](https://www.qr-code-generator.com/)
+  </Card>
+  <Card title="ZPL Designer" icon="print">
+    Design Zebra printer labels with barcodes
+    
+    [labelary.com](http://labelary.com/viewer.html)
+  </Card>
+  <Card title="Brother P-touch Editor" icon="print">
+    Software for Brother label printers
+    
+    Supports Code 128, QR, DataMatrix
+  </Card>
+</CardGroup>
+
+### Programmatic Generation
+
+For bulk label generation, use a barcode library:
+
+```bash
+npm install bwip-js
+```
+
+```javascript
+const bwipjs = require('bwip-js');
+
+// Generate Code 128 barcode for part number
+bwipjs.toBuffer({
+  bcid: 'code128',
+  text: 'NP-001-ARN',
+  scale: 3,
+  height: 10,
+  includetext: true,
+  textxalign: 'center',
+}, (err, png) => {
+  // Save PNG to file or print to label
+});
+```
+
+---
+
+## Troubleshooting
+
+### Scanner Not Detected
+
+<Accordion title="Verify USB Connection">
+  1. Check that the scanner is plugged into a USB port
+  2. Look for LED indicator on scanner (should be lit)
+  3. Try a different USB port
+  4. Test on another computer to rule out hardware failure
+</Accordion>
+
+<Accordion title="Check Keyboard Mode">
+  1. Open a text editor (Notepad, VS Code)
+  2. Scan a barcode
+  3. If text appears, scanner is in keyboard mode ✓
+  4. If nothing happens, scan the "USB HID Mode" config barcode from your scanner's manual
+</Accordion>
+
+<Accordion title="Verify Enter Suffix">
+  1. Scan a barcode into a text editor
+  2. The cursor should move to a new line after scanning
+  3. If it doesn't, scan the "Add CR Suffix" config barcode
+  4. Alternatively, scan "Add LF Suffix" for Line Feed
+</Accordion>
+
+### Scanner Reads But Doesn't Auto-Fill
+
+<Accordion title="Barcode Not in Catalog">
+  The scanned value must exactly match a catalog entry:
+  
+  - **Part Numbers:** Check `catnp.NP` field
+  - **Defect Codes:** Check `fallas.FALLA_BARRA` field
+  
+  **Common Issues:**
+  - Extra spaces in barcode
+  - Case sensitivity (NP-001-ARN vs np-001-arn)
+  - Different encoding (dashes vs underscores)
+  
+  **Solution:** Edit the catalog entry to match the barcode exactly, or regenerate the barcode.
+</Accordion>
+
+<Accordion title="Wrong Field Focused">
+  Ensure the cursor is in the correct input field before scanning:
+  
+  - Click in the **NP** field before scanning part numbers
+  - Click in the **MODO_FALLA** field before scanning defect codes
+  
+  If the wrong field is focused, the scan will be ignored or inserted as text.
+</Accordion>
+
+### Scan Detection Issues
+
+<Accordion title="Scanner Too Slow">
+  Some older scanners type characters slower than the 50ms threshold.
+  
+  **Symptoms:**
+  - Scanner input is treated as manual typing
+  - Auto-fill doesn't trigger
+  
+  **Solution:**
+  Adjust the scan detection threshold in the codebase:
+  
+  ```typescript
+  const SCAN_THRESHOLD_MS = 100; // Increase from 50ms to 100ms
+  ```
+</Accordion>
+
+<Accordion title="Keyboard Typing Detected as Scan">
+  If you type extremely fast, the system might mistake it for a scan.
+  
+  **Symptoms:**
+  - Fast typing triggers auto-fill unexpectedly
+  
+  **Solution:**
+  Decrease the scan detection threshold:
+  
+  ```typescript
+  const SCAN_THRESHOLD_MS = 30; // Decrease from 50ms to 30ms
+  ```
+</Accordion>
+
+---
+
+## Scanner Recommendations
+
+### Budget-Friendly Options
+
+| Model | Type | Price Range | Notes |
+|-------|------|-------------|-------|
+| Honeywell Voyager 1200g | Handheld | $100-150 | Reliable, omnidirectional |
+| Zebra DS2208 | Handheld | $120-180 | Reads 1D and 2D codes |
+| Symbol LS2208 | Handheld | $80-120 | Industry standard |
+| Inateck BCST-70 | Handheld | $30-50 | Budget option, wired |
+
+### Industrial Options
+
+| Model | Type | Price Range | Notes |
+|-------|------|-------------|-------|
+| Zebra DS8108 | Handheld | $250-350 | Rugged, dustproof |
+| Honeywell Granit 1280i | Handheld | $400-600 | Extreme durability |
+| Datalogic Gryphon I GD4500 | Handheld | $300-450 | 2D imaging, cordless |
+| Zebra DS3608 | Ultra-rugged | $500-700 | IP67 rated, drop-proof |
+
+<Note>
+**Recommendation:** For APTIV plant environments, choose a scanner with at least **IP54 rating** for dust and moisture resistance.
+</Note>
+
+---
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Label Placement" icon="map-pin">
+    Place defect code labels at eye level near each workstation for quick scanning without searching.
+  </Card>
+  <Card title="Regular Calibration" icon="wrench">
+    Test scanner accuracy monthly by scanning all barcode types (1D, 2D) to ensure proper decoding.
+  </Card>
+  <Card title="Duplicate Labels" icon="copy">
+    Print backup labels for high-traffic defect codes in case labels get damaged or dirty.
+  </Card>
+  <Card title="Operator Training" icon="graduation-cap">
+    Train operators on proper scanning technique: hold scanner steady, aim at center of barcode, wait for beep.
+  </Card>
+</CardGroup>
+
+---
+
+## Future Enhancements
+
+Planned barcode scanner features:
+
+- **Camera-Based Scanning**: Use smartphone camera to scan barcodes without dedicated scanner
+- **Multi-Field Scan**: Single QR code encodes part number, quantity, and defect code
+- **Offline Mode**: Cache scanned records when network is unavailable
+- **Scale Integration**: Auto-capture weight from barcode on weighing scale printout
+
+<Note>
+See the full roadmap in `INSTALACION.md:226-242` for additional planned improvements.
+</Note>

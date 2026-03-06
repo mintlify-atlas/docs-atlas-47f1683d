@@ -1,0 +1,356 @@
+---
+title: Standalone Deployment
+description: Deploy APTIV Scrap Control as a standalone frontend application using localStorage
+icon: desktop
+---
+
+## Overview
+
+The standalone deployment runs APTIV Scrap Control as a pure frontend application without requiring a backend server. All data is stored locally in the browser's `localStorage`, making it perfect for:
+
+- Quick demos and testing
+- Single-user installations
+- Offline-capable deployments
+- Development environments
+
+<Warning>
+  Standalone mode stores all data in browser localStorage (~5-10 MB limit). For production environments with multiple users, consider [Docker deployment](/deployment/docker).
+</Warning>
+
+## Prerequisites
+
+<Steps>
+  <Step title="Check Node.js Version">
+    Ensure you have Node.js 18 or higher installed:
+    
+    ```bash
+    node --version
+    ```
+    
+    If not installed, download from [nodejs.org](https://nodejs.org/)
+  </Step>
+  
+  <Step title="Modern Web Browser">
+    Any modern browser with JavaScript enabled:
+    - Google Chrome 90+
+    - Mozilla Firefox 88+
+    - Microsoft Edge 90+
+    - Safari 14+
+  </Step>
+  
+  <Step title="Disk Space">
+    - **Build time:** ~500 MB (node_modules)
+    - **Runtime:** ~10 MB (compiled assets)
+  </Step>
+</Steps>
+
+## Installation
+
+<Steps>
+  <Step title="Clone or Download the Project">
+    ```bash
+    git clone <repo-url>
+    cd aptiv-scrap-control
+    ```
+  </Step>
+  
+  <Step title="Install Dependencies">
+    Install all required npm packages:
+    
+    ```bash
+    npm install
+    ```
+    
+    This installs the following key dependencies:
+    - **react** 19.2.3 - UI framework
+    - **tailwindcss** 4.1.17 - Styling
+    - **recharts** 3.7.0 - Data visualization
+    - **lucide-react** 0.574.0 - Icons
+    - **date-fns** 4.1.0 - Date utilities
+    - **jspdf** / **jspdf-autotable** - PDF export
+  </Step>
+  
+  <Step title="Build the Application">
+    Compile the React application for production:
+    
+    ```bash
+    npm run build
+    ```
+    
+    This creates an optimized build in the `dist/` directory using Vite.
+  </Step>
+  
+  <Step title="Serve the Application">
+    Choose one of the following methods to serve the built files:
+    
+    <CodeGroup>
+      ```bash Option A: npx serve
+      npx serve dist
+      ```
+      
+      ```bash Option B: Python HTTP Server
+      cd dist
+      python3 -m http.server 3000
+      ```
+      
+      ```bash Option C: Direct Browser Access
+      # Open dist/index.html directly in your browser
+      # File path: file:///path/to/aptiv-scrap-control/dist/index.html
+      ```
+    </CodeGroup>
+    
+    <Note>
+      **Recommended:** Use `npx serve dist` for the best compatibility. Direct file access may have CORS limitations.
+    </Note>
+  </Step>
+</Steps>
+
+## Default Access Credentials
+
+The standalone deployment includes pre-configured demo users for testing:
+
+| Username | Password | Role | Permissions |
+|----------|----------|------|-------------|
+| `admin` | `admin123` | Administrator | Full system access, user management, configuration |
+| `calidad` | `calidad123` | Quality | View global reports, manage catalogs, audit logs |
+| `supervisor1` | `super123` | Supervisor | View area reports, edit daily records, export data |
+| `operador1` | `oper123` | Operator | Register scrap, view own records only |
+
+<Warning>
+  **Security Notice:** Change these default passwords before deploying to production. Credentials are stored in localStorage and can be managed through the admin panel.
+</Warning>
+
+## Data Storage
+
+### localStorage Structure
+
+Standalone mode uses browser localStorage with the following keys:
+
+- `scrap_areas` - Production areas catalog
+- `scrap_catnp` - Part number catalog
+- `scrap_fallas` - Failure modes catalog
+- `scrap_turnos` - Shift catalog with schedules
+- `scrap_cadenas` - Production chains
+- `scrap_lineas` - Production lines
+- `scrap_categorias` - Scrap categories
+- `scrap_unidades` - Units of measure
+- `scrap_usuarios` - System users
+- `scrap_roles` - User roles and permissions
+- `scrap_pesaje` - Scrap records (main data)
+- `scrap_auditoria` - Audit log
+- `scrap_tolerancias` - Tolerance thresholds
+- `scrap_auth_token` - Current session token
+
+### Storage Limits
+
+<Card title="Browser Storage Capacity" icon="database">
+  - **Chrome/Edge:** ~10 MB per origin
+  - **Firefox:** ~10 MB per origin
+  - **Safari:** ~5 MB per origin
+  
+  The system automatically monitors storage usage and warns when approaching limits.
+</Card>
+
+### Data Backup and Restore
+
+<Steps>
+  <Step title="Export Data">
+    1. Log in as administrator
+    2. Navigate to **Settings → Backup**
+    3. Click **Export All Data**
+    4. Save the JSON file to a safe location
+  </Step>
+  
+  <Step title="Import Data">
+    1. Go to **Settings → Backup**
+    2. Click **Import Data**
+    3. Select your backup JSON file
+    4. Confirm the restoration
+  </Step>
+  
+  <Step title="Reset Application">
+    To start fresh with default data:
+    
+    1. Go to **Settings → Backup**
+    2. Click **Reset Application**
+    3. Confirm - this will clear all localStorage
+    4. Refresh the page to load default data
+  </Step>
+</Steps>
+
+## Development Server
+
+For active development with hot-reload:
+
+```bash
+npm run dev
+```
+
+This starts the Vite development server at `http://localhost:5173` with:
+- Hot Module Replacement (HMR)
+- Fast refresh for React components
+- Source maps for debugging
+
+## Build Configuration
+
+The build process uses Vite with the following optimizations:
+
+```javascript
+// Key build settings from vite.config
+{
+  build: {
+    outDir: 'dist',
+    assetsDir: 'assets',
+    minify: 'esbuild',
+    sourcemap: false,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom'],
+          charts: ['recharts'],
+          pdf: ['jspdf', 'jspdf-autotable']
+        }
+      }
+    }
+  }
+}
+```
+
+## Barcode Scanner Integration
+
+Standalone mode fully supports USB barcode scanners:
+
+<Steps>
+  <Step title="Scanner Requirements">
+    - USB HID mode (keyboard emulation)
+    - Configure to append Enter/CR after scan
+    - No drivers required - works as keyboard input
+  </Step>
+  
+  <Step title="Supported Formats">
+    - Code 128
+    - Code 39
+    - QR codes
+    - DataMatrix
+    - EAN/UPC
+  </Step>
+  
+  <Step title="Auto-Detection">
+    The system automatically detects barcode input when:
+    - Characters arrive within less than 50ms intervals
+    - Input ends with Enter key
+    - Scanned value matches part number format
+    
+    Upon detection, the system auto-fills:
+    - Part number
+    - Material description
+    - Unit weight
+    - Unit cost
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+### Application Not Loading
+
+<CodeGroup>
+  ```bash Check Build Output
+  # Verify dist folder exists
+  ls -la dist/
+  
+  # Should contain:
+  # index.html, assets/, vite.svg
+  ```
+  
+  ```bash Clear Cache and Rebuild
+  # Remove node_modules and rebuild
+  rm -rf node_modules dist
+  npm install
+  npm run build
+  ```
+</CodeGroup>
+
+### localStorage Full Error
+
+```javascript
+// Check storage usage in browser console
+console.log('Storage used:', 
+  JSON.stringify(localStorage).length / (1024 * 1024) + ' MB'
+);
+
+// Clear old data if needed
+localStorage.clear();
+location.reload();
+```
+
+**Solutions:**
+1. Export and archive old scrap records
+2. Delete unnecessary audit logs
+3. Consider migrating to [Docker deployment](/deployment/docker) for unlimited storage
+
+### Blank Screen After Login
+
+1. Open browser Developer Tools (F12)
+2. Check Console tab for JavaScript errors
+3. Verify localStorage is enabled:
+   ```javascript
+   // Run in browser console
+   localStorage.setItem('test', '1');
+   localStorage.getItem('test'); // Should return '1'
+   localStorage.removeItem('test');
+   ```
+4. Disable browser extensions that block localStorage
+5. Check if running in private/incognito mode (limited storage)
+
+### Data Not Persisting
+
+<Warning>
+  Some browsers clear localStorage when:
+  - Running in private/incognito mode
+  - "Clear data on exit" is enabled
+  - Storage quota is exceeded
+  - Site data is manually cleared
+</Warning>
+
+Ensure:
+- Not in private browsing mode
+- Browser storage settings allow site data
+- Regular backups are exported
+
+## Performance Optimization
+
+### Recommended Settings
+
+<Card title="Browser Optimization" icon="gauge">
+  - **Disable extensions** when using the app
+  - **Enable hardware acceleration** in browser settings
+  - **Close unused tabs** to free memory
+  - **Clear browser cache** weekly
+</Card>
+
+### Large Datasets
+
+When localStorage contains >1000 scrap records:
+
+1. **Archive old data:** Export records older than 6 months
+2. **Paginate queries:** Limit date ranges in reports
+3. **Upgrade to Docker:** For unlimited database storage
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Docker Deployment" icon="docker" href="/deployment/docker">
+    Scale to multi-user with MySQL backend
+  </Card>
+  
+  <Card title="Network Setup" icon="network-wired" href="/deployment/network-setup">
+    Configure LAN access for multiple clients
+  </Card>
+  
+  <Card title="User Management" icon="users" href="/user-management/roles-permissions">
+    Configure user accounts and permissions
+  </Card>
+  <Card title="Data Management" icon="database" href="/configuration/catalogs">
+    Import/export data and backups
+  </Card>
+</CardGroup>

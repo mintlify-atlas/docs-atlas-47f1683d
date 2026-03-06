@@ -1,0 +1,559 @@
+---
+title: Reports
+description: Generate filtered reports with CSV/PDF export capabilities
+icon: 'file-chart-column'
+---
+
+The Reports module provides advanced filtering, visualization, and export capabilities for scrap data analysis. Generate custom reports by date range, area, shift, category, and chain.
+
+## Overview
+
+Reports offer more flexibility than the dashboard, with precise date range selection and multi-dimensional filtering.
+
+<CardGroup cols={2}>
+  <Card title="Advanced Filters" icon="filter">
+    Filter by date range, area, shift, category, and chain
+  </Card>
+  <Card title="Export Options" icon="download">
+    Download as CSV or PDF with full data tables
+  </Card>
+  <Card title="Detailed Tables" icon="table">
+    View up to 50 records with sortable columns
+  </Card>
+  <Card title="Custom Charts" icon="chart-mixed">
+    Context-specific visualizations for filtered data
+  </Card>
+</CardGroup>
+
+## Report Filters
+
+<Steps>
+  <Step title="Date Range Selection">
+    Choose from preset ranges or custom dates:
+
+    ```tsx
+    // From Reports.tsx:15
+    const [range, setRange] = useState('month');
+
+    // From Reports.tsx:21-31
+    const dateRange = useMemo(() => {
+      const end = endOfDay(new Date());
+      let start: Date;
+      switch (range) {
+        case 'today': start = startOfDay(new Date()); break;
+        case 'week': start = subDays(new Date(), 7); break;
+        case '3months': start = subMonths(new Date(), 3); break;
+        default: start = subMonths(new Date(), 1);
+      }
+      return { start, end };
+    }, [range]);
+    ```
+
+    **Available Ranges:**
+    - **Today** — Current day only
+    - **Last 7 days** — Rolling 7-day window
+    - **Last month** — Rolling 30 days
+    - **Last 3 months** — Rolling 90 days
+  </Step>
+
+  <Step title="Area Filter">
+    Filter by production area:
+
+    ```tsx
+    // From Reports.tsx:16
+    const [areaF, setAreaF] = useState('');
+
+    // From Reports.tsx:36
+    if (areaF) data = data.filter(p => p.AREA === areaF);
+    ```
+
+    - Select from active areas only
+    - Empty selection = all areas
+    - Dropdown populated from `state.areas.filter(a => a.activo)`
+  </Step>
+
+  <Step title="Shift Filter">
+    Filter by shift:
+
+    ```tsx
+    // From Reports.tsx:17
+    const [turnoF, setTurnoF] = useState('');
+
+    // From Reports.tsx:37
+    if (turnoF) data = data.filter(p => p.TURNO === turnoF);
+    ```
+
+    - Shows all configured shifts (T1, T2, T3, etc.)
+    - Empty = all shifts included
+  </Step>
+
+  <Step title="Category Filter">
+    Filter by scrap category:
+
+    ```tsx
+    // From Reports.tsx:18
+    const [catF, setCatF] = useState('');
+
+    // From Reports.tsx:38
+    if (catF) data = data.filter(p => p.CATEGORIA === catF);
+    ```
+
+    - Select material, process, quality, etc.
+    - Only active categories shown
+  </Step>
+
+  <Step title="Chain Filter">
+    Filter by production chain:
+
+    ```tsx
+    // From Reports.tsx:19
+    const [cadenaF, setCadenaF] = useState('');
+
+    // From Reports.tsx:39
+    if (cadenaF) data = data.filter(p => p.CADENA === cadenaF);
+    ```
+
+    - Select assembly line or production chain
+    - Empty = all chains
+  </Step>
+</Steps>
+
+### Combined Filtering Logic
+
+```tsx
+// From Reports.tsx:33-41
+const records = useMemo(() => {
+  let data = state.pesajes.filter(p => !p.ELIMINADO);
+  data = data.filter(p => isWithinInterval(new Date(p.FECHA_REGISTRO), dateRange));
+  if (areaF) data = data.filter(p => p.AREA === areaF);
+  if (turnoF) data = data.filter(p => p.TURNO === turnoF);
+  if (catF) data = data.filter(p => p.CATEGORIA === catF);
+  if (cadenaF) data = data.filter(p => p.CADENA === cadenaF);
+  return data.sort((a, b) => new Date(b.FECHA_REGISTRO).getTime() - new Date(a.FECHA_REGISTRO).getTime());
+}, [state.pesajes, dateRange, areaF, turnoF, catF, cadenaF]);
+```
+
+All filters are applied cumulatively (AND logic). Results are sorted newest first.
+
+## Report KPIs
+
+Three summary metrics display at the top:
+
+```tsx
+// From Reports.tsx:43-44
+const totalQty = records.reduce((s, r) => s + Number(r.TOTAL_PZAS || 0), 0);
+const totalCost = records.reduce((s, r) => s + (r.COSTO || 0), 0);
+```
+
+<CardGroup cols={3}>
+  <Card title="Total Records" icon="hashtag">
+    Number of scrap entries matching filters
+  </Card>
+  <Card title="Total Quantity" icon="boxes-stacked">
+    Sum of all pieces (formatted with thousand separators)
+  </Card>
+  <Card title="Total Cost" icon="dollar-sign">
+    Sum of all costs in USD (2 decimal precision)
+  </Card>
+</CardGroup>
+
+## Report Charts
+
+Four visualization types help analyze filtered data:
+
+### 1. Cost Trend Line Chart
+
+```tsx
+// From Reports.tsx:46-50
+const costByDay = useMemo(() => {
+  const map = new Map<string, number>();
+  records.forEach(r => { 
+    const d = format(new Date(r.FECHA_REGISTRO), 'dd/MM', { locale: es }); 
+    map.set(d, (map.get(d) || 0) + (r.COSTO || 0));
+  });
+  return [...map.entries()].map(([fecha, costo]) => ({ fecha, costo: Math.round(costo) }));
+}, [records]);
+```
+
+- **Type**: Line chart
+- **X-Axis**: Date (dd/MM format)
+- **Y-Axis**: Daily cost (USD)
+- **Color**: Red (#E4002B)
+- **Use**: Identify cost spikes and patterns
+
+### 2. Cost by Category Bar Chart
+
+```tsx
+// From Reports.tsx:52-56
+const costByCat = useMemo(() => {
+  const map = new Map<string, number>();
+  records.forEach(r => map.set(r.CATEGORIA || 'Sin cat.', (map.get(r.CATEGORIA || 'Sin cat.') || 0) + (r.COSTO || 0)));
+  return [...map.entries()].map(([name, costo]) => ({ name, costo: Math.round(costo) })).sort((a, b) => b.costo - a.costo);
+}, [records]);
+```
+
+- **Type**: Vertical bar chart
+- **X-Axis**: Category name
+- **Y-Axis**: Total cost (USD)
+- **Color**: Blue (#2563eb)
+- **Sorting**: Highest cost first
+- **Use**: Compare scrap types
+
+### 3. Top 10 Parts Horizontal Bar Chart
+
+```tsx
+// From Reports.tsx:58-62
+const topPartsReport = useMemo(() => {
+  const map = new Map<string, number>();
+  records.forEach(r => map.set(r.NP, (map.get(r.NP) || 0) + (r.COSTO || 0)));
+  return [...map.entries()].map(([name, costo]) => ({ name, costo: Math.round(costo) })).sort((a, b) => b.costo - a.costo).slice(0, 10);
+}, [records]);
+```
+
+- **Type**: Horizontal bar chart
+- **Y-Axis**: Part number
+- **X-Axis**: Cost (USD)
+- **Color**: Orange (#f59e0b)
+- **Limit**: Top 10 only
+- **Use**: Focus on highest-cost parts
+
+### 4. Quantity by Shift Bar Chart
+
+```tsx
+// From Reports.tsx:64-68
+const byTurnoReport = useMemo(() => {
+  const map = new Map<string, { qty: number; cost: number }>();
+  records.forEach(r => map.set(r.TURNO, (map.get(r.TURNO) || 0) + Number(r.TOTAL_PZAS || 0)));
+  return [...map.entries()].map(([name, cantidad]) => ({ name, cantidad }));
+}, [records]);
+```
+
+- **Type**: Bar chart
+- **X-Axis**: Shift code
+- **Y-Axis**: Total quantity
+- **Color**: Purple (#7c3aed)
+- **Use**: Compare shift performance
+
+### 5. Top Failure Modes Chart
+
+```tsx
+// From Reports.tsx:70-74
+const topMotivos = useMemo(() => {
+  const map = new Map<string, number>();
+  records.forEach(r => { 
+    if (r.MODO_FALLA && r.MODO_FALLA !== '-') 
+      map.set(r.MODO_FALLA, (map.get(r.MODO_FALLA) || 0) + 1);
+  });
+  return [...map.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count).slice(0, 10);
+}, [records]);
+```
+
+- **Type**: Bar chart
+- **X-Axis**: Failure reason
+- **Y-Axis**: Incident count
+- **Color**: Pink (#ec4899)
+- **Limit**: Top 10 motives
+- **Use**: Root cause analysis
+
+## Data Table
+
+The report includes a detailed data table showing up to 50 records:
+
+```tsx
+// From Reports.tsx:218-259
+<table>
+  <thead>
+    <tr>
+      <th>Fecha</th>
+      <th>Área</th>
+      <th>Cadena</th>
+      <th>Línea</th>
+      <th>Turno</th>
+      <th>No.Parte</th>
+      <th>Material</th>
+      <th>Cat.</th>
+      <th>Motivo</th>
+      <th>Cant.</th>
+      <th>C.Unit</th>
+      <th>C.Total</th>
+      <th>Usuario</th>
+    </tr>
+  </thead>
+  <tbody>
+    {records.slice(0, 50).map(r => (
+      <tr key={r.ID}>
+        <td>{format(new Date(r.FECHA_REGISTRO), 'dd/MM HH:mm')}</td>
+        <td>{r.AREA}</td>
+        <td>{r.CADENA}</td>
+        <td>{r.LINEA || '-'}</td>
+        <td>{r.TURNO}</td>
+        <td>{r.NP}</td>
+        <td>{r.MATERIAL}</td>
+        <td>{r.CATEGORIA || '-'}</td>
+        <td>{r.MODO_FALLA}</td>
+        <td>{r.TOTAL_PZAS}</td>
+        <td>${(r.COSTO / Math.max(Number(r.TOTAL_PZAS), 1)).toFixed(2)}</td>
+        <td>${r.COSTO?.toFixed(2)}</td>
+        <td>{state.usuarios.find(u => u.id === r.USUARIO_ID)?.nombre || '-'}</td>
+      </tr>
+    ))}
+  </tbody>
+</table>
+```
+
+**Features:**
+- **Row limit**: 50 records (prevents browser lag)
+- **Unit cost**: Calculated as `Total Cost / Quantity`
+- **User lookup**: Resolves `USUARIO_ID` to display name
+- **Date format**: `dd/MM HH:mm` (e.g., "15/03 14:32")
+- **Styling**: Zebra striping, responsive overflow
+
+### Table Footer with Totals
+
+```tsx
+// From Reports.tsx:248-255
+<tfoot>
+  <tr>
+    <td colSpan={9}>TOTALES:</td>
+    <td>{totalQty.toLocaleString()}</td>
+    <td>—</td>
+    <td>${totalCost.toFixed(2)}</td>
+    <td></td>
+  </tr>
+</tfoot>
+```
+
+Shows grand totals for quantity and cost across all filtered records (not just visible 50).
+
+## Export Functions
+
+### CSV Export
+
+Generate downloadable CSV file with all records:
+
+```tsx
+// From Reports.tsx:76-86
+const exportCSV = () => {
+  const headers = ['Fecha','Área','Cadena','Línea','Turno','No.Parte','Material','Categoría','Motivo','Cantidad','CostoUnit','CostoTotal','Usuario'];
+  const rows = records.map(r => [
+    format(new Date(r.FECHA_REGISTRO), 'yyyy-MM-dd HH:mm'), r.AREA, r.CADENA, r.LINEA || '', r.TURNO, r.NP, r.MATERIAL, r.CATEGORIA || '', r.MODO_FALLA,
+    r.TOTAL_PZAS, (r.COSTO / Math.max(Number(r.TOTAL_PZAS), 1)).toFixed(2), r.COSTO?.toFixed(2),
+    state.usuarios.find(u => u.id === r.USUARIO_ID)?.nombre || ''
+  ]);
+  const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `reporte_scrap_${format(new Date(), 'yyyyMMdd')}.csv`; a.click();
+};
+```
+
+**Features:**
+- **Format**: Standard CSV with comma delimiters
+- **Filename**: `reporte_scrap_YYYYMMDD.csv`
+- **All records**: Exports complete filtered dataset (not limited to 50)
+- **User-friendly**: Auto-downloads to browser default location
+
+<Tabs>
+  <Tab title="CSV Structure">
+    ```csv
+    Fecha,Área,Cadena,Línea,Turno,No.Parte,Material,Categoría,Motivo,Cantidad,CostoUnit,CostoTotal,Usuario
+    2024-03-15 14:32,Assembly,Chain A,Line 1,T2,PN-12345,Steel,Material,Defect,25,1.50,37.50,Juan Pérez
+    2024-03-15 10:15,Paint,Chain B,,T1,PN-67890,Paint,Process,Overspray,10,2.30,23.00,María López
+    ```
+  </Tab>
+  
+  <Tab title="Excel Compatibility">
+    The CSV format is fully compatible with:
+    - Microsoft Excel
+    - Google Sheets
+    - LibreOffice Calc
+    - SAP import tools
+    - ERP systems
+
+    <Note>
+      Open CSV files with "Import Data" in Excel to preserve formatting and avoid locale issues.
+    </Note>
+  </Tab>
+</Tabs>
+
+### PDF Export
+
+Generate printable PDF report:
+
+```tsx
+// From Reports.tsx:88-103
+const exportPDF = async () => {
+  const { default: jsPDF } = await import('jspdf');
+  const autoTable = (await import('jspdf-autotable')).default;
+  const doc = new jsPDF('landscape');
+  doc.setFontSize(16); doc.text('Reporte de Scrap - APTIV', 14, 15);
+  doc.setFontSize(10); doc.text(`Generado: ${format(new Date(), 'dd/MM/yyyy HH:mm')} | Registros: ${records.length} | Costo Total: $${totalCost.toFixed(2)}`, 14, 22);
+  autoTable(doc, {
+    startY: 28,
+    head: [['Fecha','Área','Cadena','Turno','No.Parte','Material','Motivo','Cant.','Costo']],
+    body: records.slice(0, 200).map(r => [
+      format(new Date(r.FECHA_REGISTRO), 'dd/MM/yy HH:mm'), r.AREA, r.CADENA, r.TURNO, r.NP, r.MATERIAL, r.MODO_FALLA, r.TOTAL_PZAS, `$${r.COSTO?.toFixed(2)}`
+    ]),
+    styles: { fontSize: 7 }, headStyles: { fillColor: [228, 0, 43] },
+  });
+  doc.save(`reporte_scrap_${format(new Date(), 'yyyyMMdd')}.pdf`);
+};
+```
+
+**Features:**
+- **Orientation**: Landscape (to fit all columns)
+- **Header**: APTIV branding with generation timestamp
+- **Summary**: Record count and total cost
+- **Table styling**: Red header (APTIV brand color), compact 7pt font
+- **Record limit**: First 200 records only (PDF size constraint)
+- **Libraries**: Uses `jspdf` + `jspdf-autotable`
+
+<Warning>
+  PDF export is limited to **200 records** to prevent performance issues. For larger datasets, use CSV export instead.
+</Warning>
+
+## Permissions
+
+Access control for reports:
+
+```tsx
+// From Reports.tsx:105-106
+if (!can('view_area_reports') && !can('view_global_reports'))
+  return <div>No tienes permiso para ver reportes.</div>;
+```
+
+<CardGroup cols={2}>
+  <Card title="Area Reports" icon="building">
+    **Permission**: `view_area_reports`
+    
+    **Roles**: Supervisor, Quality, Admin
+    
+    Can view reports filtered to their assigned area(s)
+  </Card>
+  <Card title="Global Reports" icon="globe">
+    **Permission**: `view_global_reports`
+    
+    **Roles**: Quality, Admin
+    
+    Can view reports across all areas without restriction
+  </Card>
+</CardGroup>
+
+## Filter UI Implementation
+
+```tsx
+// From Reports.tsx:122-135
+<div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
+  {[
+    { v: range, set: setRange, opts: [['today','Hoy'],['week','Última semana'],['month','Último mes'],['3months','3 meses']] },
+    { v: areaF, set: setAreaF, opts: [['','Todas las áreas'], ...state.areas.filter(a => a.activo).map(a => [a.AREA, a.AREA])] },
+    { v: turnoF, set: setTurnoF, opts: [['','Todos los turnos'], ...state.turnos.map(t => [t.codigo, t.nombre])] },
+    { v: catF, set: setCatF, opts: [['','Todas las categorías'], ...state.categorias.filter(c => c.activo).map(c => [c.nombre, c.nombre])] },
+    { v: cadenaF, set: setCadenaF, opts: [['','Todas las cadenas'], ...state.cadenas.filter(c => c.activo).map(c => [c.nombre, c.nombre])] },
+  ].map((f, idx) => (
+    <select key={idx} value={f.v} onChange={e => f.set(e.target.value)} style={inputStyle}>
+      {f.opts.map(([val, label]) => <option key={val} value={val}>{label}</option>)}
+    </select>
+  ))}
+</div>
+```
+
+**Design Pattern:**
+- Array of filter configurations
+- Dynamic `<select>` generation
+- Shared `inputStyle` for consistency
+- Responsive flex wrap layout
+
+## Performance Considerations
+
+### Memoization Strategy
+
+All expensive calculations use `useMemo`:
+
+```tsx
+const records = useMemo(() => { /* filter logic */ }, [state.pesajes, dateRange, areaF, turnoF, catF, cadenaF]);
+const costByDay = useMemo(() => { /* aggregation */ }, [records]);
+const topPartsReport = useMemo(() => { /* sorting */ }, [records]);
+```
+
+**Benefits:**
+- Only recalculates when dependencies change
+- Prevents chart flicker on unrelated state updates
+- Handles 1000+ records smoothly
+
+### Large Dataset Handling
+
+<Tabs>
+  <Tab title="Table Rendering">
+    ```tsx
+    {records.slice(0, 50).map(r => (
+      // render row
+    ))}
+    ```
+    
+    Limits DOM nodes to 50 rows to prevent browser lag.
+  </Tab>
+  
+  <Tab title="PDF Export">
+    ```tsx
+    records.slice(0, 200).map(r => [...]);
+    ```
+    
+    Caps PDF at 200 records to control file size.
+  </Tab>
+  
+  <Tab title="CSV Export">
+    ```tsx
+    const rows = records.map(r => [...]);
+    ```
+    
+    No limit — CSV can handle thousands of rows efficiently.
+  </Tab>
+</Tabs>
+
+## Common Use Cases
+
+<AccordionGroup>
+  <Accordion title="Daily Production Report">
+    1. Set date range to "Hoy"
+    2. Leave all other filters empty
+    3. Export PDF for shift handover meeting
+    4. Review top failure modes chart
+  </Accordion>
+  
+  <Accordion title="Area Performance Analysis">
+    1. Set date range to "Último mes"
+    2. Select specific area
+    3. Review cost by category chart
+    4. Export CSV for detailed analysis in Excel
+  </Accordion>
+  
+  <Accordion title="Root Cause Investigation">
+    1. Set date range to "Última semana"
+    2. Select problematic shift (e.g., T3)
+    3. Review top failure modes
+    4. Click on specific part in "Top 10 Parts" chart
+    5. Export filtered data for 8D report
+  </Accordion>
+  
+  <Accordion title="Monthly Executive Summary">
+    1. Set date range to "Último mes"
+    2. Leave filters empty (all data)
+    3. Take screenshots of charts
+    4. Export PDF with summary KPIs
+    5. Include in monthly board presentation
+  </Accordion>
+</AccordionGroup>
+
+## Related Pages
+
+<CardGroup cols={3}>
+  <Card title="Dashboard" icon="chart-line" href="/features/dashboard">
+    Real-time metrics and live charts
+  </Card>
+  <Card title="Scrap Registration" icon="clipboard" href="/features/scrap-registration">
+    Register new scrap entries
+  </Card>
+  <Card title="Audit Log" icon="clock-rotate-left" href="/user-management/audit-logs">
+    Track who generated which reports
+  </Card>
+</CardGroup>

@@ -1,0 +1,313 @@
+---
+title: 'Production Lines Catalog'
+api: 'GET /api/catalogs/lineas'
+description: 'Manage production lines within chains'
+---
+
+## Overview
+
+The Production Lines catalog (Líneas) defines individual production lines within manufacturing chains. Lines are where actual production occurs and where scrap is generated.
+
+<Note>
+  Lines belong to a parent chain and are typically supervised by a designated line supervisor.
+</Note>
+
+## Endpoints
+
+### List All Lines
+
+<CodeGroup>
+```bash GET - List All
+curl -X GET http://localhost:3001/api/catalogs/lineas \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+```bash GET - Get by ID
+curl -X GET http://localhost:3001/api/catalogs/lineas/1 \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+</CodeGroup>
+
+### Create Line
+
+<CodeGroup>
+```bash POST
+curl -X POST http://localhost:3001/api/catalogs/lineas \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "cadena_id": 1,
+    "nombre": "Línea 1A",
+    "tipo": "Ensamble",
+    "supervisor_id": 10,
+    "activo": 1
+  }'
+```
+
+```javascript JavaScript
+const createLine = async (lineData) => {
+  const response = await fetch('http://localhost:3001/api/catalogs/lineas', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${getToken()}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(lineData)
+  });
+  return await response.json();
+};
+
+// Create multiple lines for a chain
+const createChainLines = async (chainId, lineNames) => {
+  const lines = lineNames.map(name => ({
+    cadena_id: chainId,
+    nombre: name,
+    tipo: 'Ensamble',
+    activo: 1
+  }));
+  
+  for (const line of lines) {
+    await createLine(line);
+  }
+};
+
+// Usage
+await createChainLines(1, ['Línea 1A', 'Línea 1B', 'Línea 1C']);
+```
+</CodeGroup>
+
+### Update Line
+
+```bash
+curl -X PUT http://localhost:3001/api/catalogs/lineas/1 \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"supervisor_id": 15}'
+```
+
+### Delete Line (Soft)
+
+```bash
+curl -X DELETE http://localhost:3001/api/catalogs/lineas/1 \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+## Data Structure
+
+<ResponseField name="id" type="number">
+  Unique identifier
+</ResponseField>
+
+<ResponseField name="cadena_id" type="number" required>
+  Parent chain ID (foreign key to cadenas table)
+</ResponseField>
+
+<ResponseField name="nombre" type="string" required>
+  Line name (e.g., "Línea 1A", "Línea 2B", "Ensamble Final")
+</ResponseField>
+
+<ResponseField name="tipo" type="string" required>
+  Line type (e.g., "Ensamble", "Moldeo", "Inspección", "Empaque")
+</ResponseField>
+
+<ResponseField name="supervisor_id" type="number">
+  User ID of line supervisor
+</ResponseField>
+
+<ResponseField name="activo" type="number">
+  Status: 1 = active, 0 = inactive
+</ResponseField>
+
+## Response Example
+
+```json
+[
+  {
+    "id": 1,
+    "cadena_id": 1,
+    "nombre": "Línea 1A",
+    "tipo": "Ensamble",
+    "supervisor_id": 10,
+    "activo": 1
+  },
+  {
+    "id": 2,
+    "cadena_id": 1,
+    "nombre": "Línea 1B",
+    "tipo": "Ensamble",
+    "supervisor_id": 12,
+    "activo": 1
+  },
+  {
+    "id": 3,
+    "cadena_id": 2,
+    "nombre": "Moldeo FCA-A",
+    "tipo": "Moldeo",
+    "supervisor_id": 15,
+    "activo": 1
+  }
+]
+```
+
+## TypeScript Interface
+
+```typescript
+export interface Linea {
+  id: number;
+  cadena_id: number;
+  nombre: string;
+  tipo: string;
+  supervisor_id?: number;
+  activo: number;
+}
+```
+
+## Hierarchical Queries
+
+### Get Lines by Chain
+
+```javascript
+const getLinesByChain = (chainId, lines) => {
+  return lines.filter(line => 
+    line.cadena_id === chainId && line.activo === 1
+  );
+};
+
+// Get lines with chain info
+const getLinesWithChainInfo = (lines, chains) => {
+  return lines.map(line => ({
+    ...line,
+    chain: chains.find(c => c.id === line.cadena_id)
+  }));
+};
+```
+
+### Get Lines by Supervisor
+
+```javascript
+const getLinesBySupervisor = (supervisorId, lines) => {
+  return lines.filter(line => 
+    line.supervisor_id === supervisorId && line.activo === 1
+  );
+};
+```
+
+## Line Performance Dashboard
+
+```typescript
+interface LinePerformance {
+  line: Linea;
+  totalScrap: number;
+  totalCost: number;
+  efficiency: number;
+}
+
+const getLinePerformance = async (
+  lineId: number,
+  startDate: string,
+  endDate: string
+): Promise<LinePerformance> => {
+  const response = await fetch(
+    `http://localhost:3001/api/scrap?` +
+    `linea_id=${lineId}&desde=${startDate}&hasta=${endDate}`,
+    {
+      headers: { 'Authorization': `Bearer ${getToken()}` }
+    }
+  );
+  
+  const { data } = await response.json();
+  
+  return {
+    line: await getLineById(lineId),
+    totalScrap: data.reduce((sum, item) => sum + parseInt(item.TOTAL_PZAS), 0),
+    totalCost: data.reduce((sum, item) => sum + item.COSTO, 0),
+    efficiency: calculateEfficiency(data)
+  };
+};
+```
+
+## Cascading Selection UI
+
+```typescript
+const LineSelector: React.FC = () => {
+  const [chains, setChains] = useState<Cadena[]>([]);
+  const [lines, setLines] = useState<Linea[]>([]);
+  const [selectedChain, setSelectedChain] = useState<number | null>(null);
+  const [filteredLines, setFilteredLines] = useState<Linea[]>([]);
+  
+  useEffect(() => {
+    // Load catalogs
+    fetchChains().then(setChains);
+    fetchLines().then(setLines);
+  }, []);
+  
+  useEffect(() => {
+    if (selectedChain) {
+      setFilteredLines(
+        lines.filter(line => line.cadena_id === selectedChain)
+      );
+    } else {
+      setFilteredLines([]);
+    }
+  }, [selectedChain, lines]);
+  
+  return (
+    <div>
+      <label>Cadena:</label>
+      <select onChange={e => setSelectedChain(Number(e.target.value))}>
+        <option value="">Seleccionar...</option>
+        {chains.map(chain => (
+          <option key={chain.id} value={chain.id}>
+            {chain.nombre}
+          </option>
+        ))}
+      </select>
+      
+      {filteredLines.length > 0 && (
+        <>
+          <label>Línea:</label>
+          <select name="linea_id">
+            <option value="">Seleccionar...</option>
+            {filteredLines.map(line => (
+              <option key={line.id} value={line.id}>
+                {line.nombre}
+              </option>
+            ))}
+          </select>
+        </>
+      )}
+    </div>
+  );
+};
+```
+
+## Permissions
+
+<CardGroup cols={2}>
+  <Card title="View" icon="eye">
+    All authenticated users
+  </Card>
+  <Card title="Create/Edit" icon="pencil">
+    `admin`, `calidad` roles only
+  </Card>
+</CardGroup>
+
+## Best Practices
+
+<Note>
+  **Consistent Naming:** Use a consistent naming convention like "Línea {Chain}{Number}" (e.g., "Línea 1A", "Línea 1B").
+</Note>
+
+<Warning>
+  **Foreign Keys:** Ensure `cadena_id` references an existing chain before creating a line.
+</Warning>
+
+<Note>
+  **Supervisor Assignment:** Assign supervisors to lines for accountability and reporting.
+</Note>
+
+## Related Endpoints
+
+- [Chains Catalog](/api/catalogs/chains) - Parent production chains
+- [Create Scrap Record](/api/scrap/create) - Register scrap for a line
+- [Users Management](/api/admin/users) - Assign line supervisors

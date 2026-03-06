@@ -1,0 +1,225 @@
+---
+title: 'Session Validation'
+api: 'GET /api/health'
+description: 'Validate JWT token and check session status'
+---
+
+## Overview
+
+While there's no dedicated session validation endpoint, you can validate your session by making authenticated requests to any protected endpoint. The authentication middleware validates the JWT token on every request.
+
+<Note>
+  All authenticated endpoints automatically validate the JWT token through the `authMiddleware`.
+</Note>
+
+## Authentication Middleware
+
+The authentication middleware (`authMiddleware`) is applied to all protected routes and performs the following validations:
+
+1. Checks for `Authorization` header
+2. Verifies the header format: `Bearer <token>`
+3. Validates JWT signature and expiration
+4. Decodes user information from token
+5. Attaches user object to request
+
+## Token Format
+
+### Request Header
+
+```
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+### Token Payload
+
+The JWT token contains the following user information:
+
+```json
+{
+  "id": 1,
+  "nombre": "Juan",
+  "apellido": "Pérez",
+  "gafete": "admin",
+  "tipo": "admin",
+  "area": "Ensamble",
+  "iat": 1699999999,
+  "exp": 1700043199
+}
+```
+
+<ParamField body="id" type="number">
+  User's unique identifier
+</ParamField>
+
+<ParamField body="nombre" type="string">
+  User's first name
+</ParamField>
+
+<ParamField body="apellido" type="string">
+  User's last name
+</ParamField>
+
+<ParamField body="gafete" type="string">
+  User's badge number
+</ParamField>
+
+<ParamField body="tipo" type="string">
+  User role: `admin`, `calidad`, `supervisor`, or `operador`
+</ParamField>
+
+<ParamField body="area" type="string">
+  Assigned production area
+</ParamField>
+
+<ParamField body="iat" type="number">
+  Issued at timestamp (Unix epoch)
+</ParamField>
+
+<ParamField body="exp" type="number">
+  Expiration timestamp (Unix epoch, 12 hours after iat)
+</ParamField>
+
+## Testing Token Validity
+
+You can test if your token is still valid by making a request to any authenticated endpoint, such as the user list:
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:3001/api/users \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE"
+```
+
+```javascript JavaScript
+const token = 'YOUR_TOKEN_HERE';
+
+const response = await fetch('http://localhost:3001/api/users', {
+  method: 'GET',
+  headers: {
+    'Authorization': `Bearer ${token}`
+  }
+});
+
+if (response.status === 401) {
+  console.log('Token expired or invalid - please login again');
+} else if (response.ok) {
+  console.log('Token is valid');
+}
+```
+
+```typescript TypeScript
+async function validateToken(token: string): Promise<boolean> {
+  try {
+    const response = await fetch('http://localhost:3001/api/users', {
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    
+    return response.ok;
+  } catch (error) {
+    return false;
+  }
+}
+```
+</CodeGroup>
+
+## Error Responses
+
+### 401 Unauthorized - Missing Token
+
+```json
+{
+  "error": "Token requerido"
+}
+```
+
+### 401 Unauthorized - Invalid or Expired Token
+
+```json
+{
+  "error": "Token inválido o expirado"
+}
+```
+
+## Role-Based Access Control
+
+Some endpoints require specific roles. The `requireRole` middleware checks if the authenticated user has the necessary permissions.
+
+### Role Hierarchy
+
+<CardGroup cols={2}>
+  <Card title="admin" icon="crown">
+    Full system access, can manage users, roles, and all data
+  </Card>
+  <Card title="calidad" icon="shield-check">
+    Quality control access, can manage catalogs and view all reports
+  </Card>
+  <Card title="supervisor" icon="user-tie">
+    Can register scrap, edit today's records, view area reports
+  </Card>
+  <Card title="operador" icon="user">
+    Basic access, can register scrap and view own records
+  </Card>
+</CardGroup>
+
+### 403 Forbidden - Insufficient Permissions
+
+Returned when the authenticated user's role doesn't match the required roles:
+
+```json
+{
+  "error": "Sin permisos suficientes"
+}
+```
+
+## Session Management
+
+<Note>
+  Sessions are stored in the `sesiones` table with the following information:
+  - `usuario_id`: User ID
+  - `token`: JWT token
+  - `ip`: Client IP address
+  - `expires_at`: Expiration timestamp (12 hours from login)
+</Note>
+
+<Warning>
+  **Security Best Practices:**
+  - Store tokens securely (sessionStorage/localStorage in browser)
+  - Never expose tokens in URLs or logs
+  - Implement automatic logout on token expiration
+  - Clear tokens on manual logout
+</Warning>
+
+## Implementation Example
+
+### Frontend Token Storage
+
+```typescript
+// Store token after login
+const storeSession = (token: string, user: Usuario) => {
+  const session = { token, user, loginTime: new Date().toISOString() };
+  sessionStorage.setItem('aptiv_session', JSON.stringify(session));
+};
+
+// Retrieve token for API calls
+const getToken = (): string | null => {
+  try {
+    const session = sessionStorage.getItem('aptiv_session');
+    if (session) {
+      const parsed = JSON.parse(session);
+      return parsed.token || null;
+    }
+  } catch { /* ignore */ }
+  return null;
+};
+
+// Add to API request headers
+const headers = {
+  'Content-Type': 'application/json',
+  'Authorization': `Bearer ${getToken()}`
+};
+```
+
+## Related Endpoints
+
+- [Login](/api/auth/login) - Authenticate and obtain token
+- [User Management](/api/admin/users) - Manage user accounts

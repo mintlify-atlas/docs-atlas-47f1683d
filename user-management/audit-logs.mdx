@@ -1,0 +1,366 @@
+---
+title: "Audit Logs"
+description: "Track all system changes with comprehensive audit trail"
+---
+
+## Overview
+
+APTIV Scrap Control maintains a complete audit trail of all system changes, providing accountability and compliance tracking for manufacturing operations.
+
+## Audit Log Structure
+
+```typescript types.ts
+export interface AuditEntry {
+  id: number;
+  accion: string;        // Action: create, update, delete
+  entidad: string;       // Entity: usuarios, pesaje, areas, catnp, etc.
+  entidad_id: string;    // ID of the affected record
+  usuario_id: number;    // User who performed the action
+  cambios: string;       // JSON object with before/after values
+  fecha: string;         // Timestamp of the action
+}
+```
+
+### Database Schema
+
+```sql schema.sql
+CREATE TABLE IF NOT EXISTS auditoria (
+  id int AUTO_INCREMENT PRIMARY KEY,
+  accion varchar(20) NOT NULL,
+  entidad varchar(50) NOT NULL,
+  entidad_id varchar(50) NOT NULL,
+  usuario_id int NOT NULL,
+  cambios TEXT NOT NULL,
+  fecha datetime DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+## Tracked Events
+
+### Scrap Records
+- **Create**: New scrap entry registered
+- **Update**: Modification to weight, cost, or defect mode
+- **Delete**: Soft delete (sets ELIMINADO=1)
+
+### User Management
+- **Create**: New user account created
+- **Update**: Role change, area reassignment, or password reset
+- **Deactivate**: Account disabled (activo=0)
+
+### Catalog Changes
+- **Create**: New catalog entry (part, defect, area, shift, line)
+- **Update**: Modification to catalog data
+- **Delete**: Catalog entry deactivated
+
+### Tolerance Configuration
+- **Create**: New tolerance threshold defined
+- **Update**: Threshold values or alert percentages changed
+- **Delete**: Tolerance removed
+
+### Permission Changes
+- **Update**: Role permissions modified
+- **Assign**: User role changed
+
+## Audit Log Component
+
+The `AuditPage.tsx` component displays the audit trail with filtering and search:
+
+```typescript AuditPage.tsx
+interface AuditPageState {
+  filteredLogs: AuditEntry[];
+  searchTerm: string;
+  actionFilter: string;   // 'all' | 'create' | 'update' | 'delete'
+  entityFilter: string;   // 'all' | 'usuarios' | 'pesaje' | etc.
+  dateRange: { start: Date; end: Date };
+}
+
+const handleSearch = (logs: AuditEntry[]) => {
+  return logs.filter(log => {
+    const matchesSearch = 
+      log.entidad.includes(searchTerm) ||
+      log.accion.includes(searchTerm) ||
+      log.entidad_id.includes(searchTerm);
+    
+    const matchesAction = 
+      actionFilter === 'all' || log.accion === actionFilter;
+    
+    const matchesEntity = 
+      entityFilter === 'all' || log.entidad === entityFilter;
+    
+    const logDate = new Date(log.fecha);
+    const matchesDate = 
+      logDate >= dateRange.start && logDate <= dateRange.end;
+    
+    return matchesSearch && matchesAction && matchesEntity && matchesDate;
+  });
+};
+```
+
+## Creating Audit Entries
+
+### Frontend Audit Helper
+
+```typescript store.ts
+const createAuditEntry = (
+  accion: 'create' | 'update' | 'delete',
+  entidad: string,
+  entidad_id: string,
+  cambios: Record<string, any>
+) => {
+  const state = get();
+  if (!state.currentUser) return;
+  
+  const entry: AuditEntry = {
+    id: Date.now(),
+    accion,
+    entidad,
+    entidad_id,
+    usuario_id: state.currentUser.id,
+    cambios: JSON.stringify(cambios),
+    fecha: new Date().toISOString()
+  };
+  
+  set((state) => ({
+    auditoria: [...state.auditoria, entry]
+  }));
+  
+  // Send to API if in API mode
+  if (state.dataMode === 'api') {
+    fetch('/api/audit', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.session?.token}`
+      },
+      body: JSON.stringify(entry)
+    });
+  }
+};
+```
+
+### Backend Audit Logging
+
+```javascript audit.js
+const logAudit = async (req, action, entity, entityId, changes) => {
+  await db.query(
+    'INSERT INTO auditoria (accion, entidad, entidad_id, usuario_id, cambios) VALUES (?, ?, ?, ?, ?)',
+    [
+      action,
+      entity,
+      entityId,
+      req.user.id,
+      JSON.stringify(changes)
+    ]
+  );
+};
+
+// Usage example
+router.put('/scrap/:id', authMiddleware, async (req, res) => {
+  const { id } = req.params;
+  const updates = req.body;
+  
+  // Get current values
+  const [current] = await db.query('SELECT * FROM pesaje WHERE ID = ?', [id]);
+  
+  // Update record
+  await db.query('UPDATE pesaje SET ? WHERE ID = ?', [updates, id]);
+  
+  // Log the change
+  await logAudit(req, 'update', 'pesaje', id, {
+    before: current[0],
+    after: updates
+  });
+  
+  res.json({ success: true });
+});
+```
+
+## Audit Log Display
+
+### List View
+
+The audit page displays logs in a table format:
+
+| Timestamp | User | Action | Entity | Record ID | Changes |
+|-----------|------|--------|--------|-----------|----------|
+| 2024-03-06 14:30 | admin | update | pesaje | 1234 | View |
+| 2024-03-06 14:15 | calidad | create | catnp | 567 | View |
+| 2024-03-06 14:00 | supervisor1 | delete | pesaje | 890 | View |
+
+### Change Detail View
+
+Clicking "View" expands the changes JSON:
+
+```json
+{
+  "before": {
+    "PESO": 2.5,
+    "COSTO": 15.75,
+    "MODO_FALLA": "Conector dañado"
+  },
+  "after": {
+    "PESO": 3.0,
+    "COSTO": 18.90,
+    "MODO_FALLA": "Material defectuoso"
+  }
+}
+```
+
+## Filtering and Search
+
+<Tabs>
+  <Tab title="By Action">
+    Filter by action type:
+    - **Create**: New records added
+    - **Update**: Existing records modified
+    - **Delete**: Records soft-deleted
+  </Tab>
+  
+  <Tab title="By Entity">
+    Filter by entity type:
+    - `usuarios` - User accounts
+    - `pesaje` - Scrap records
+    - `areas` - Production areas
+    - `catnp` - Part catalog
+    - `fallas` - Defect modes
+    - `roles` - Role definitions
+    - `tolerancias` - Tolerance thresholds
+  </Tab>
+  
+  <Tab title="By Date Range">
+    Select start and end dates to view logs within a specific period:
+    - Last 24 hours
+    - Last 7 days
+    - Last 30 days
+    - Custom range
+  </Tab>
+  
+  <Tab title="By User">
+    Filter by user ID or name to see all actions performed by a specific user.
+  </Tab>
+</Tabs>
+
+## Export Audit Logs
+
+Audit logs can be exported for compliance reporting:
+
+```typescript
+const exportAuditLog = (logs: AuditEntry[]) => {
+  const csv = [
+    ['Timestamp', 'User ID', 'Action', 'Entity', 'Record ID', 'Changes'].join(','),
+    ...logs.map(log => [
+      log.fecha,
+      log.usuario_id,
+      log.accion,
+      log.entidad,
+      log.entidad_id,
+      JSON.stringify(log.cambios)
+    ].join(','))
+  ].join('\n');
+  
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `audit-log-${new Date().toISOString()}.csv`;
+  a.click();
+};
+```
+
+## Common Use Cases
+
+<AccordionGroup>
+  <Accordion title="Investigate Data Discrepancy">
+    When a scrap value doesn't match expectations:
+    
+    1. Search for the record ID in audit logs
+    2. Review all update actions
+    3. Check who made changes and when
+    4. Compare before/after values in changes JSON
+  </Accordion>
+  
+  <Accordion title="Track User Activity">
+    Monitor what actions a user has performed:
+    
+    1. Filter by user ID
+    2. Select date range (e.g., last week)
+    3. Review create/update/delete patterns
+    4. Identify any unusual behavior
+  </Accordion>
+  
+  <Accordion title="Compliance Reporting">
+    Generate audit reports for regulatory requirements:
+    
+    1. Filter by date range (e.g., last quarter)
+    2. Select relevant entities (e.g., pesaje, usuarios)
+    3. Export to CSV
+    4. Include in compliance documentation
+  </Accordion>
+  
+  <Accordion title="Troubleshoot Configuration Changes">
+    Identify when a system setting was changed:
+    
+    1. Filter by entity type (roles, tolerancias)
+    2. Review update actions
+    3. Check changes JSON for the specific setting
+    4. Revert if needed by manually updating
+  </Accordion>
+</AccordionGroup>
+
+## Retention and Cleanup
+
+Audit logs are retained indefinitely by default. For database maintenance, implement a retention policy:
+
+```javascript
+// Delete audit logs older than 2 years
+const cleanupOldLogs = async () => {
+  const twoYearsAgo = new Date();
+  twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+  
+  await db.query(
+    'DELETE FROM auditoria WHERE fecha < ?',
+    [twoYearsAgo]
+  );
+};
+
+// Run monthly
+setInterval(cleanupOldLogs, 30 * 24 * 60 * 60 * 1000);
+```
+
+<Warning>
+  Consult with legal and compliance teams before implementing automatic log deletion. Some regulations require indefinite retention of audit trails.
+</Warning>
+
+## Performance Considerations
+
+For large audit log tables:
+
+1. **Add indexes** to speed up queries:
+   ```sql
+   CREATE INDEX idx_audit_fecha ON auditoria(fecha);
+   CREATE INDEX idx_audit_usuario ON auditoria(usuario_id);
+   CREATE INDEX idx_audit_entidad ON auditoria(entidad, entidad_id);
+   ```
+
+2. **Paginate results** in the UI (show 50 logs per page)
+
+3. **Archive old logs** to a separate table or backup file
+
+4. **Limit date range** in queries to prevent full table scans
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="Roles & Permissions" icon="shield" href="/user-management/roles-permissions">
+    Permission changes are tracked in audit logs
+  </Card>
+  <Card title="User Management" icon="users" href="/user-management/authentication">
+    User account changes are logged
+  </Card>
+  <Card title="API: Audit" icon="code" href="/api/admin/audit">
+    Retrieve audit logs via API
+  </Card>
+  <Card title="Backup & Restore" icon="database" href="/api/admin/backup">
+    Audit logs are included in backups
+  </Card>
+</CardGroup>

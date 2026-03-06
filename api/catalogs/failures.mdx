@@ -1,0 +1,237 @@
+---
+title: 'Failure Modes Catalog'
+api: 'GET /api/catalogs/fallas'
+description: 'Manage failure modes and defect categories'
+---
+
+## Overview
+
+The Failure Modes catalog (Fallas) stores predefined failure types and defect categories. This standardizes scrap reporting and enables failure mode analysis.
+
+<Note>
+  Failure modes are typically area-specific, allowing each production area to track relevant defect types.
+</Note>
+
+## Endpoints
+
+### List All Failure Modes
+
+<CodeGroup>
+```bash GET - List All
+curl -X GET http://localhost:3001/api/catalogs/fallas \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+```bash GET - Get by ID
+curl -X GET http://localhost:3001/api/catalogs/fallas/1 \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+</CodeGroup>
+
+### Create Failure Mode
+
+<CodeGroup>
+```bash POST
+curl -X POST http://localhost:3001/api/catalogs/fallas \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "FALLA": "Defecto de moldeo",
+    "AREA": "Moldeo",
+    "FALLA_BARRA": "MOLD-001",
+    "CATEGORIA": "Proceso",
+    "activo": 1
+  }'
+```
+
+```javascript JavaScript
+const createFailureMode = async (data) => {
+  const response = await fetch('http://localhost:3001/api/catalogs/fallas', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${getToken()}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(data)
+  });
+  return await response.json();
+};
+```
+</CodeGroup>
+
+### Update Failure Mode
+
+```bash
+curl -X PUT http://localhost:3001/api/catalogs/fallas/1 \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"CATEGORIA": "Material"}'
+```
+
+### Delete Failure Mode (Soft)
+
+```bash
+curl -X DELETE http://localhost:3001/api/catalogs/fallas/1 \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+## Data Structure
+
+<ResponseField name="ID" type="number">
+  Unique identifier
+</ResponseField>
+
+<ResponseField name="FALLA" type="string" required>
+  Failure mode description (e.g., "Defecto de moldeo", "Contaminación", "Dimensiones incorrectas")
+</ResponseField>
+
+<ResponseField name="AREA" type="string" required>
+  Production area where this failure mode applies
+</ResponseField>
+
+<ResponseField name="FALLA_BARRA" type="string">
+  Failure code or barcode identifier
+</ResponseField>
+
+<ResponseField name="CATEGORIA" type="string">
+  Failure category (e.g., "Proceso", "Material", "Equipo", "Humano")
+</ResponseField>
+
+<ResponseField name="activo" type="number">
+  Status: 1 = active, 0 = inactive
+</ResponseField>
+
+## Response Example
+
+```json
+[
+  {
+    "ID": 1,
+    "FALLA": "Defecto de moldeo",
+    "AREA": "Moldeo",
+    "FALLA_BARRA": "MOLD-001",
+    "CATEGORIA": "Proceso",
+    "activo": 1
+  },
+  {
+    "ID": 2,
+    "FALLA": "Contaminación de material",
+    "AREA": "Moldeo",
+    "FALLA_BARRA": "MOLD-002",
+    "CATEGORIA": "Material",
+    "activo": 1
+  },
+  {
+    "ID": 3,
+    "FALLA": "Soldadura defectuosa",
+    "AREA": "Ensamble",
+    "FALLA_BARRA": "ENS-001",
+    "CATEGORIA": "Proceso",
+    "activo": 1
+  }
+]
+```
+
+## TypeScript Interface
+
+```typescript
+export interface Falla {
+  ID: number;
+  FALLA: string;
+  AREA: string;
+  FALLA_BARRA: string;
+  CATEGORIA?: string;
+  activo: number;
+}
+```
+
+## Common Failure Categories
+
+<CardGroup cols={2}>
+  <Card title="Proceso" icon="gear">
+    Manufacturing process issues
+  </Card>
+  <Card title="Material" icon="box">
+    Raw material defects
+  </Card>
+  <Card title="Equipo" icon="wrench">
+    Equipment malfunctions
+  </Card>
+  <Card title="Humano" icon="user">
+    Operator errors
+  </Card>
+</CardGroup>
+
+## Usage in Scrap Registration
+
+When registering scrap, users select a failure mode from this catalog:
+
+```javascript
+// Filter failure modes by current area
+const getFailureModesByArea = (area, catalog) => {
+  return catalog.filter(falla => 
+    falla.AREA === area && falla.activo === 1
+  );
+};
+
+// Usage in form
+const currentArea = 'Moldeo';
+const availableFailures = getFailureModesByArea(currentArea, fallasCatalog);
+
+// Render dropdown
+<select name="MODO_FALLA">
+  <option value="-">Sin falla específica</option>
+  {availableFailures.map(f => (
+    <option key={f.ID} value={f.FALLA}>{f.FALLA}</option>
+  ))}
+</select>
+```
+
+## Pareto Analysis
+
+The failure modes catalog enables Pareto analysis to identify the most common defects:
+
+```javascript
+// Get top failure modes from scrap data
+const getTopFailures = async (startDate, endDate, limit = 10) => {
+  const response = await fetch(
+    `http://localhost:3001/api/reports/top-fallas?` +
+    `fecha_inicio=${startDate}&fecha_fin=${endDate}&limit=${limit}`,
+    {
+      headers: { 'Authorization': `Bearer ${getToken()}` }
+    }
+  );
+  return await response.json();
+};
+```
+
+## Permissions
+
+<CardGroup cols={2}>
+  <Card title="View" icon="eye">
+    All authenticated users
+  </Card>
+  <Card title="Create/Edit" icon="pencil">
+    `admin`, `calidad` roles only
+  </Card>
+</CardGroup>
+
+## Best Practices
+
+<Note>
+  **Standardization:** Use consistent naming conventions for failure modes across areas to enable cross-area analysis.
+</Note>
+
+<Note>
+  **Area-Specific:** Create failure modes specific to each area for accurate tracking and relevant reporting.
+</Note>
+
+<Warning>
+  **Don't Delete:** Instead of deleting obsolete failure modes, mark them as inactive (`activo = 0`) to preserve historical data integrity.
+</Warning>
+
+## Related Endpoints
+
+- [Top Failures Report](/api/reports/top-fallas) - Most common failures
+- [Create Scrap Record](/api/scrap/create) - Register scrap with failure mode
+- [Areas Catalog](/api/catalogs/areas) - Production areas

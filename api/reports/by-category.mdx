@@ -1,0 +1,220 @@
+---
+title: 'Report by Category'
+api: 'GET /api/reports/by-category'
+description: 'Get scrap statistics grouped by category'
+---
+
+## Overview
+
+Retrieve scrap data aggregated by scrap category, showing quantity and cost breakdown for each category.
+
+## Authentication
+
+Requires valid JWT token.
+
+```
+Authorization: Bearer <token>
+```
+
+## Query Parameters
+
+<ParamField query="fecha_inicio" type="string">
+  Start date filter (YYYY-MM-DD format)
+</ParamField>
+
+<ParamField query="fecha_fin" type="string">
+  End date filter (YYYY-MM-DD format)
+</ParamField>
+
+## Request Example
+
+<CodeGroup>
+```bash cURL
+curl -X GET "http://localhost:3001/api/reports/by-category?fecha_inicio=2024-03-01&fecha_fin=2024-03-31" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+```javascript JavaScript
+const getByCategory = async (startDate, endDate) => {
+  const params = new URLSearchParams();
+  if (startDate) params.append('fecha_inicio', startDate);
+  if (endDate) params.append('fecha_fin', endDate);
+  
+  const response = await fetch(
+    `http://localhost:3001/api/reports/by-category?${params}`,
+    {
+      headers: { 'Authorization': `Bearer ${getToken()}` }
+    }
+  );
+  
+  return await response.json();
+};
+```
+
+```typescript TypeScript
+interface CategoryReport {
+  name: string;
+  cantidad: number;
+  costo: number;
+}
+
+const getByCategory = async (
+  startDate?: string,
+  endDate?: string
+): Promise<CategoryReport[]> => {
+  const params = new URLSearchParams();
+  if (startDate) params.append('fecha_inicio', startDate);
+  if (endDate) params.append('fecha_fin', endDate);
+  
+  const response = await fetch(
+    `http://localhost:3001/api/reports/by-category?${params}`,
+    {
+      headers: { 'Authorization': `Bearer ${getToken()}` }
+    }
+  );
+  
+  return await response.json();
+};
+```
+</CodeGroup>
+
+## Response
+
+Returns an array of category statistics, sorted by cost (highest first).
+
+<ResponseField name="name" type="string">
+  Category name (or "Sin categoría" for uncategorized)
+</ResponseField>
+
+<ResponseField name="cantidad" type="number">
+  Total pieces scrapped in this category
+</ResponseField>
+
+<ResponseField name="costo" type="number">
+  Total cost (USD) for this category
+</ResponseField>
+
+### Success Response Example
+
+```json
+[
+  {
+    "name": "Moldeo",
+    "cantidad": 18420,
+    "costo": 52830.50
+  },
+  {
+    "name": "Ensamble",
+    "cantidad": 14305,
+    "costo": 38150.75
+  },
+  {
+    "name": "Material",
+    "cantidad": 9234,
+    "costo": 24640.20
+  },
+  {
+    "name": "Sin categoría",
+    "cantidad": 2105,
+    "costo": 5420.80
+  }
+]
+```
+
+## Category Analysis Dashboard
+
+```typescript
+const CategoryDashboard: React.FC = () => {
+  const [data, setData] = useState<CategoryReport[]>([]);
+  const [dateRange, setDateRange] = useState({
+    start: new Date().toISOString().split('T')[0],
+    end: new Date().toISOString().split('T')[0]
+  });
+  
+  useEffect(() => {
+    const fetchData = async () => {
+      const report = await getByCategory(dateRange.start, dateRange.end);
+      setData(report);
+    };
+    fetchData();
+  }, [dateRange]);
+  
+  const totalCost = data.reduce((sum, cat) => sum + cat.costo, 0);
+  
+  return (
+    <div>
+      <h2>Scrap by Category</h2>
+      <DateRangePicker value={dateRange} onChange={setDateRange} />
+      
+      <div className="grid">
+        {data.map(category => (
+          <div key={category.name} className="card">
+            <h3>{category.name}</h3>
+            <p>Quantity: {category.cantidad.toLocaleString()}</p>
+            <p>Cost: ${category.costo.toFixed(2)}</p>
+            <p>% of Total: {(category.costo / totalCost * 100).toFixed(1)}%</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+```
+
+## Uncategorized Items Alert
+
+```javascript
+const checkUncategorized = async () => {
+  const data = await getByCategory();
+  const uncategorized = data.find(cat => cat.name === 'Sin categoría');
+  
+  if (uncategorized && uncategorized.cantidad > 0) {
+    console.warn(
+      `⚠️ ${uncategorized.cantidad} records have no category assigned`,
+      `(Cost: $${uncategorized.costo.toFixed(2)})`
+    );
+    
+    return {
+      hasUncategorized: true,
+      count: uncategorized.cantidad,
+      cost: uncategorized.costo
+    };
+  }
+  
+  return { hasUncategorized: false };
+};
+```
+
+## Category Comparison
+
+```javascript
+const compareCategories = async (category1, category2, startDate, endDate) => {
+  const data = await getByCategory(startDate, endDate);
+  
+  const cat1Data = data.find(c => c.name === category1) || { cantidad: 0, costo: 0 };
+  const cat2Data = data.find(c => c.name === category2) || { cantidad: 0, costo: 0 };
+  
+  return {
+    [category1]: cat1Data,
+    [category2]: cat2Data,
+    difference: {
+      cantidad: cat1Data.cantidad - cat2Data.cantidad,
+      costo: cat1Data.costo - cat2Data.costo
+    },
+    ratio: {
+      cantidad: (cat1Data.cantidad / cat2Data.cantidad).toFixed(2),
+      costo: (cat1Data.costo / cat2Data.costo).toFixed(2)
+    }
+  };
+};
+
+// Compare Moldeo vs Ensamble
+const comparison = await compareCategories('Moldeo', 'Ensamble', '2024-03-01', '2024-03-31');
+console.log(`Moldeo costs ${comparison.ratio.costo}x more than Ensamble`);
+```
+
+## Related Endpoints
+
+- [Summary Report](/api/reports/summary) - Overall statistics
+- [By Area Report](/api/reports/by-area) - Grouped by area
+- [Categories Catalog](/api/catalogs/lines) - Category definitions

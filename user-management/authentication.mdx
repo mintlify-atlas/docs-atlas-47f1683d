@@ -1,0 +1,379 @@
+---
+title: "Authentication"
+description: "JWT-based authentication with bcrypt password hashing"
+---
+
+## Overview
+
+APTIV Scrap Control uses JWT (JSON Web Tokens) for stateless authentication with bcrypt password hashing for security.
+
+## Authentication Flow
+
+<Steps>
+  <Step title="User Login">
+    User submits `gafete` (badge ID) and password to `/api/auth/login`.
+  </Step>
+  
+  <Step title="Credential Verification">
+    Server validates credentials against the `usuarios` table using bcrypt comparison.
+  </Step>
+  
+  <Step title="Token Generation">
+    On success, server generates a JWT token with 12-hour expiration.
+  </Step>
+  
+  <Step title="Client Storage">
+    Frontend stores token in localStorage and includes it in all API requests.
+  </Step>
+  
+  <Step title="Token Validation">
+    Server validates token on each request using JWT middleware.
+  </Step>
+</Steps>
+
+## User Data Structure
+
+```typescript types.ts
+export interface Usuario {
+  id: number;
+  nombre: string;
+  apellido: string;
+  gafete: string;        // Badge ID (unique identifier)
+  turno: string;         // Assigned shift
+  area: string;          // Assigned area
+  tipo: string;          // Role: Admin, Calidad, Supervisor, Operador
+  contra: string;        // Bcrypt hashed password
+  activo: number;        // 1 = active, 0 = inactive
+  permisos?: string;     // JSON array of permissions
+  created_at?: string;   // Account creation timestamp
+}
+
+export interface Session {
+  user: Usuario;
+  token: string;
+  loginTime: string;
+}
+```
+
+## Login Process
+
+### Frontend Login Component
+
+```typescript LoginPage.tsx
+const handleLogin = async (e: FormEvent) => {
+  e.preventDefault();
+  
+  const usuario = usuarios.find(
+    (u) => u.gafete === gafete && u.activo === 1
+  );
+  
+  if (!usuario) {
+    setError('Usuario no encontrado o inactivo');
+    return;
+  }
+  
+  // In API mode, verify with backend
+  if (dataMode === 'api') {
+    const response = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gafete, password: contra })
+    });
+    
+    if (!response.ok) {
+      setError('Credenciales inválidas');
+      return;
+    }
+    
+    const { token, user } = await response.json();
+    store.setSession(user, token);
+  } else {
+    // Local mode: simple password comparison
+    if (usuario.contra !== contra) {
+      setError('Contraseña incorrecta');
+      return;
+    }
+    store.setCurrentUser(usuario);
+  }
+};
+```
+
+### Backend Authentication Route
+
+```javascript auth.js
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+
+router.post('/login', async (req, res) => {
+  const { gafete, password } = req.body;
+  
+  // Find user by badge ID
+  const [users] = await db.query(
+    'SELECT * FROM usuarios WHERE gafete = ? AND activo = 1',
+    [gafete]
+  );
+  
+  if (users.length === 0) {
+    return res.status(401).json({ error: 'Usuario no encontrado' });
+  }
+  
+  const user = users[0];
+  
+  // Verify password with bcrypt
+  const isValid = await bcrypt.compare(password, user.contra);
+  
+  if (!isValid) {
+    return res.status(401).json({ error: 'Contraseña incorrecta' });
+  }
+  
+  // Generate JWT token (12 hour expiration)
+  const token = jwt.sign(
+    { id: user.id, gafete: user.gafete, tipo: user.tipo },
+    process.env.JWT_SECRET || 'aptiv-scrap-secret-2024',
+    { expiresIn: '12h' }
+  );
+  
+  // Store session in database
+  await db.query(
+    'INSERT INTO sesiones (usuario_id, token, ip, expires_at) VALUES (?, ?, ?, ?)',
+    [user.id, token, req.ip, new Date(Date.now() + 12 * 60 * 60 * 1000)]
+  );
+  
+  // Return token and user data (without password)
+  delete user.contra;
+  res.json({ token, user });
+});
+```
+
+## JWT Token Structure
+
+### Token Payload
+
+```json
+{
+  "id": 1,
+  "gafete": "12345",
+  "tipo": "Admin",
+  "iat": 1704067200,
+  "exp": 1704110400
+}
+```
+
+### Token Usage
+
+Include the token in the `Authorization` header for all API requests:
+
+```bash
+curl -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  https://api.example.com/api/scrap
+```
+
+```typescript
+const response = await fetch('/api/scrap', {
+  headers: {
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/json'
+  }
+});
+```
+
+## JWT Middleware
+
+### Server-Side Token Validation
+
+```javascript middleware/auth.js
+const jwt = require('jsonwebtoken');
+
+const authMiddleware = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'No token provided' });
+  }
+  
+  const token = authHeader.substring(7);
+  
+  try {
+    const decoded = jwt.verify(
+      token,
+      process.env.JWT_SECRET || 'aptiv-scrap-secret-2024'
+    );
+    
+    req.user = decoded;
+    next();
+  } catch (err) {
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
+};
+
+module.exports = authMiddleware;
+```
+
+### Protecting Routes
+
+```javascript server.js
+const authMiddleware = require('./middleware/auth');
+
+// Public route
+app.post('/api/auth/login', authRoutes);
+
+// Protected routes
+app.use('/api/scrap', authMiddleware, scrapRoutes);
+app.use('/api/users', authMiddleware, userRoutes);
+app.use('/api/reports', authMiddleware, reportsRoutes);
+```
+
+## Password Management
+
+### Password Hashing
+
+Passwords are hashed using bcrypt with 10 salt rounds:
+
+```javascript
+const bcrypt = require('bcryptjs');
+
+const hashedPassword = await bcrypt.hash(plainPassword, 10);
+```
+
+### Creating Users with Hashed Passwords
+
+```javascript users.js
+router.post('/', authMiddleware, async (req, res) => {
+  const { nombre, apellido, gafete, turno, area, tipo, contra } = req.body;
+  
+  // Hash password before storing
+  const hashedPassword = await bcrypt.hash(contra, 10);
+  
+  await db.query(
+    'INSERT INTO usuarios (nombre, apellido, gafete, turno, area, tipo, contra, activo) VALUES (?, ?, ?, ?, ?, ?, ?, 1)',
+    [nombre, apellido, gafete, turno, area, tipo, hashedPassword]
+  );
+  
+  res.json({ success: true });
+});
+```
+
+### Password Reset
+
+```javascript
+router.put('/:id/password', authMiddleware, async (req, res) => {
+  const { id } = req.params;
+  const { newPassword } = req.body;
+  
+  // Hash new password
+  const hashedPassword = await bcrypt.hash(newPassword, 10);
+  
+  await db.query(
+    'UPDATE usuarios SET contra = ? WHERE id = ?',
+    [hashedPassword, id]
+  );
+  
+  res.json({ success: true });
+});
+```
+
+## Session Management
+
+### Database Schema
+
+```sql schema.sql
+CREATE TABLE IF NOT EXISTS sesiones (
+  id int AUTO_INCREMENT PRIMARY KEY,
+  usuario_id int NOT NULL,
+  token varchar(500) NOT NULL,
+  ip varchar(50) DEFAULT NULL,
+  expires_at datetime NOT NULL,
+  created_at datetime DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### Session Cleanup
+
+Expired sessions are automatically cleaned up:
+
+```javascript
+// Run daily at midnight
+const cleanupExpiredSessions = async () => {
+  await db.query('DELETE FROM sesiones WHERE expires_at < NOW()');
+};
+
+setInterval(cleanupExpiredSessions, 24 * 60 * 60 * 1000);
+```
+
+## Default Credentials
+
+<Warning>
+  **Change these credentials immediately after installation!**
+</Warning>
+
+| Username | Password | Role |
+|----------|----------|------|
+| `admin` | `admin123` | Administrator |
+| `calidad` | `calidad123` | Quality |
+| `supervisor1` | `super123` | Supervisor |
+| `operador1` | `oper123` | Operator |
+
+## Security Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use HTTPS" icon="lock">
+    Always deploy with HTTPS to prevent token interception
+  </Card>
+  <Card title="Rotate JWT Secret" icon="key">
+    Change `JWT_SECRET` environment variable regularly
+  </Card>
+  <Card title="Short Token Expiration" icon="clock">
+    Default 12-hour expiration balances security and usability
+  </Card>
+  <Card title="Monitor Failed Logins" icon="shield-exclamation">
+    Implement rate limiting after multiple failed attempts
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Token expired error">
+    JWT tokens expire after 12 hours. Users must log in again to get a fresh token.
+    
+    **Solution**: Implement automatic token refresh or warn users before expiration.
+  </Accordion>
+  
+  <Accordion title="Invalid token error">
+    Token signature doesn't match or token was tampered with.
+    
+    **Solution**: Ensure `JWT_SECRET` is consistent across server restarts. Clear localStorage and log in again.
+  </Accordion>
+  
+  <Accordion title="Password not matching">
+    Bcrypt comparison failing even with correct password.
+    
+    **Solution**: Verify password was hashed before storing. Re-hash password using seed script.
+  </Accordion>
+  
+  <Accordion title="CORS errors in browser">
+    Browser blocking requests due to CORS policy.
+    
+    **Solution**: Configure CORS middleware in Express to allow your frontend origin:
+    ```javascript
+    app.use(cors({ origin: 'http://localhost:8080' }));
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="Roles & Permissions" icon="shield" href="/user-management/roles-permissions">
+    Configure user permissions
+  </Card>
+  <Card title="Audit Logs" icon="clock-rotate-left" href="/user-management/audit-logs">
+    Track authentication events
+  </Card>
+  <Card title="API: Login" icon="code" href="/api/auth/login">
+    Login endpoint documentation
+  </Card>
+  <Card title="API: Session" icon="code" href="/api/auth/session">
+    Session validation endpoint
+  </Card>
+</CardGroup>

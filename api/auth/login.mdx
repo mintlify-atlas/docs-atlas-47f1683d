@@ -1,0 +1,183 @@
+---
+title: 'Login'
+api: 'POST /api/auth/login'
+description: 'Authenticate user and obtain JWT token'
+---
+
+## Authentication
+
+This endpoint authenticates a user with their badge number (gafete) and password. Upon successful authentication, it returns a JWT token valid for 12 hours and creates a session record in the database.
+
+<Note>
+  The JWT token must be included in the `Authorization` header as `Bearer <token>` for all subsequent authenticated requests.
+</Note>
+
+## Request
+
+### Body Parameters
+
+<ParamField body="gafete" type="string" required>
+  User's badge number or employee ID
+</ParamField>
+
+<ParamField body="contra" type="string" required>
+  User's password (bcrypt hashed in database)
+</ParamField>
+
+### Request Example
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:3001/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "gafete": "admin",
+    "contra": "admin123"
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3001/api/auth/login', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    gafete: 'admin',
+    contra: 'admin123'
+  })
+});
+
+const data = await response.json();
+```
+
+```typescript TypeScript
+interface LoginRequest {
+  gafete: string;
+  contra: string;
+}
+
+interface LoginResponse {
+  token: string;
+  user: {
+    id: number;
+    nombre: string;
+    apellido: string;
+    gafete: string;
+    turno: string;
+    area: string;
+    tipo: string;
+  };
+}
+
+const response = await fetch('http://localhost:3001/api/auth/login', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ gafete: 'admin', contra: 'admin123' })
+});
+
+const data: LoginResponse = await response.json();
+```
+</CodeGroup>
+
+## Response
+
+<ResponseField name="token" type="string">
+  JWT authentication token (valid for 12 hours)
+</ResponseField>
+
+<ResponseField name="user" type="object">
+  Authenticated user information
+  
+  <Expandable title="User Object">
+    <ResponseField name="id" type="number">
+      User's unique identifier
+    </ResponseField>
+    
+    <ResponseField name="nombre" type="string">
+      User's first name
+    </ResponseField>
+    
+    <ResponseField name="apellido" type="string">
+      User's last name
+    </ResponseField>
+    
+    <ResponseField name="gafete" type="string">
+      User's badge number
+    </ResponseField>
+    
+    <ResponseField name="turno" type="string">
+      Assigned shift (A, B, C, etc.)
+    </ResponseField>
+    
+    <ResponseField name="area" type="string">
+      Assigned production area
+    </ResponseField>
+    
+    <ResponseField name="tipo" type="string">
+      User role: `admin`, `calidad`, `supervisor`, or `operador`
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Success Response Example
+
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "user": {
+    "id": 1,
+    "nombre": "Juan",
+    "apellido": "Pérez",
+    "gafete": "admin",
+    "turno": "A",
+    "area": "Ensamble",
+    "tipo": "admin"
+  }
+}
+```
+
+## Error Responses
+
+<ResponseField name="error" type="string">
+  Error message describing what went wrong
+</ResponseField>
+
+### 401 Unauthorized
+
+Returned when credentials are invalid or user is inactive.
+
+```json
+{
+  "error": "Credenciales inválidas"
+}
+```
+
+### 500 Internal Server Error
+
+Returned when a database or server error occurs.
+
+```json
+{
+  "error": "Database connection failed"
+}
+```
+
+## Implementation Details
+
+<Note>
+  **Password Security:** Passwords are hashed using bcrypt with 10 salt rounds. Never store or transmit plain-text passwords.
+</Note>
+
+<Note>
+  **Session Management:** A session record is created in the `sesiones` table with the token, user ID, IP address, and expiration time (12 hours from login).
+</Note>
+
+<Warning>
+  **Token Expiration:** JWT tokens expire after 12 hours. Implement token refresh logic or re-authenticate when receiving 401 errors.
+</Warning>
+
+## Related Endpoints
+
+- [Session Validation](/api/auth/session) - Validate current session
+- [User Management](/api/admin/users) - Manage user accounts

@@ -1,0 +1,287 @@
+---
+title: 'Roles Management'
+api: 'GET /api/catalogs/roles'
+description: 'Manage user roles and permissions'
+---
+
+## Overview
+
+Manage user roles with customizable permissions. Roles define what actions users can perform in the system.
+
+<Note>
+  The roles system uses the generic catalog endpoints. Roles are stored in the `roles` table.
+</Note>
+
+## Authentication
+
+Requires valid JWT token.
+
+```
+Authorization: Bearer <token>
+```
+
+## Default Roles
+
+The system includes 4 default roles:
+
+<CardGroup cols={2}>
+  <Card title="admin" icon="crown">
+    Full system access
+  </Card>
+  <Card title="calidad" icon="shield-check">
+    Quality control and reports
+  </Card>
+  <Card title="supervisor" icon="user-tie">
+    Team supervision and area management
+  </Card>
+  <Card title="operador" icon="user">
+    Basic scrap registration
+  </Card>
+</CardGroup>
+
+## Endpoints
+
+### List All Roles
+
+<CodeGroup>
+```bash GET
+curl -X GET http://localhost:3001/api/catalogs/roles \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+```javascript JavaScript
+const getRoles = async () => {
+  const response = await fetch('http://localhost:3001/api/catalogs/roles', {
+    headers: { 'Authorization': `Bearer ${getToken()}` }
+  });
+  return await response.json();
+};
+```
+</CodeGroup>
+
+### Create Role
+
+```bash POST
+curl -X POST http://localhost:3001/api/catalogs/roles \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "nombre": "gerente",
+    "descripcion": "Gerente de Planta",
+    "activo": 1,
+    "es_sistema": 0,
+    "permisos": "{\"view_reports\":true,\"manage_users\":false}"
+  }'
+```
+
+### Update Role
+
+```bash PUT
+curl -X PUT http://localhost:3001/api/catalogs/roles/5 \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"descripcion": "Gerente de Producción"}'
+```
+
+### Delete Role
+
+```bash DELETE
+curl -X DELETE http://localhost:3001/api/catalogs/roles/5 \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+## Data Structure
+
+<ResponseField name="id" type="number">
+  Unique role identifier
+</ResponseField>
+
+<ResponseField name="nombre" type="string" required>
+  Role name (e.g., "admin", "supervisor")
+</ResponseField>
+
+<ResponseField name="descripcion" type="string" required>
+  Human-readable description
+</ResponseField>
+
+<ResponseField name="activo" type="number">
+  Status: 1 = active, 0 = inactive
+</ResponseField>
+
+<ResponseField name="es_sistema" type="number">
+  System role flag: 1 = cannot be deleted, 0 = custom role
+</ResponseField>
+
+<ResponseField name="permisos" type="string">
+  JSON string of permission flags
+</ResponseField>
+
+## Response Example
+
+```json
+[
+  {
+    "id": 1,
+    "nombre": "admin",
+    "descripcion": "Administrador del Sistema",
+    "activo": 1,
+    "es_sistema": 1,
+    "permisos": "{\"all\":true}"
+  },
+  {
+    "id": 2,
+    "nombre": "calidad",
+    "descripcion": "Control de Calidad",
+    "activo": 1,
+    "es_sistema": 1,
+    "permisos": "{\"view_reports\":true,\"manage_catalogs\":true}"
+  },
+  {
+    "id": 3,
+    "nombre": "supervisor",
+    "descripcion": "Supervisor de Línea",
+    "activo": 1,
+    "es_sistema": 1,
+    "permisos": "{\"register_scrap\":true,\"edit_today\":true}"
+  },
+  {
+    "id": 4,
+    "nombre": "operador",
+    "descripcion": "Operador de Producción",
+    "activo": 1,
+    "es_sistema": 1,
+    "permisos": "{\"register_scrap\":true}"
+  }
+]
+```
+
+## Permission Keys
+
+```typescript
+export type PermissionKey =
+  | 'register_scrap'         // Register new scrap records
+  | 'view_own_records'       // View own scrap records
+  | 'view_area_reports'      // View area-level reports
+  | 'view_global_reports'    // View facility-wide reports
+  | 'edit_today_records'     // Edit records from today
+  | 'delete_records'         // Delete scrap records
+  | 'manage_catalogs'        // Manage catalogs (areas, parts, failures)
+  | 'manage_users'           // Create/edit/delete users
+  | 'manage_permissions'     // Edit role permissions
+  | 'manage_tolerances'      // Configure tolerance limits
+  | 'export_backup'          // Export system backup
+  | 'view_audit'             // View audit log
+  | 'import_catalogs'        // Import catalog data
+  | 'export_catalogs';       // Export catalog data
+```
+
+## Permission Matrix
+
+```typescript
+const DEFAULT_PERMISSIONS = {
+  admin: {
+    all: true // Full access
+  },
+  calidad: {
+    register_scrap: true,
+    view_own_records: true,
+    view_area_reports: true,
+    view_global_reports: true,
+    edit_today_records: true,
+    delete_records: true,
+    manage_catalogs: true,
+    manage_tolerances: true,
+    view_audit: true,
+    import_catalogs: true,
+    export_catalogs: true
+  },
+  supervisor: {
+    register_scrap: true,
+    view_own_records: true,
+    view_area_reports: true,
+    edit_today_records: true,
+    export_catalogs: true
+  },
+  operador: {
+    register_scrap: true,
+    view_own_records: true
+  }
+};
+```
+
+## Check Permissions
+
+```typescript
+const hasPermission = (user: Usuario, permission: PermissionKey): boolean => {
+  // Admin has all permissions
+  if (user.tipo === 'admin') return true;
+  
+  // Parse user permissions
+  try {
+    const permisos = user.permisos ? JSON.parse(user.permisos) : {};
+    return permisos[permission] === true;
+  } catch {
+    return false;
+  }
+};
+
+// Usage
+if (hasPermission(currentUser, 'manage_catalogs')) {
+  // Show catalog management UI
+}
+```
+
+## Role-Based UI
+
+```typescript
+const RoleBasedButton: React.FC<{
+  permission: PermissionKey;
+  onClick: () => void;
+  children: React.ReactNode;
+}> = ({ permission, onClick, children }) => {
+  const { currentUser } = useAuth();
+  
+  if (!hasPermission(currentUser, permission)) {
+    return null;
+  }
+  
+  return <button onClick={onClick}>{children}</button>;
+};
+
+// Usage
+<RoleBasedButton permission="manage_users" onClick={openUserModal}>
+  Add User
+</RoleBasedButton>
+```
+
+## TypeScript Interface
+
+```typescript
+export interface Rol {
+  id: number;
+  nombre: string;
+  descripcion: string;
+  activo: number;
+  es_sistema: number;
+  permisos: string; // JSON string
+}
+```
+
+## Best Practices
+
+<Warning>
+  **System Roles:** Roles with `es_sistema = 1` cannot be deleted. These are the 4 default roles that the system depends on.
+</Warning>
+
+<Note>
+  **Custom Roles:** Create custom roles for specific needs (e.g., "gerente", "ingeniero", "auditor") with tailored permissions.
+</Note>
+
+<Note>
+  **Least Privilege:** Always assign the minimum permissions necessary for users to perform their job functions.
+</Note>
+
+## Related Endpoints
+
+- [User Management](/api/admin/users) - Assign roles to users
+- [Audit Log](/api/admin/audit) - Track permission changes

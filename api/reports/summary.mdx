@@ -1,0 +1,282 @@
+---
+title: 'Summary Report'
+api: 'GET /api/reports/summary'
+description: 'Get aggregated scrap statistics with filtering'
+---
+
+## Overview
+
+Retrieve aggregated scrap statistics including total records, total quantity, and total cost. Supports filtering by date range, area, shift, chain, and category.
+
+## Authentication
+
+Requires valid JWT token.
+
+```
+Authorization: Bearer <token>
+```
+
+## Query Parameters
+
+<ParamField query="fecha_inicio" type="string">
+  Start date filter (YYYY-MM-DD format)
+</ParamField>
+
+<ParamField query="fecha_fin" type="string">
+  End date filter (YYYY-MM-DD format)
+</ParamField>
+
+<ParamField query="area" type="string">
+  Filter by specific area
+</ParamField>
+
+<ParamField query="turno" type="string">
+  Filter by shift (A, B, C, etc.)
+</ParamField>
+
+<ParamField query="cadena" type="string">
+  Filter by production chain
+</ParamField>
+
+<ParamField query="categoria" type="string">
+  Filter by scrap category
+</ParamField>
+
+## Request Example
+
+<CodeGroup>
+```bash cURL - All Time
+curl -X GET "http://localhost:3001/api/reports/summary" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+```bash cURL - Date Range
+curl -X GET "http://localhost:3001/api/reports/summary?fecha_inicio=2024-03-01&fecha_fin=2024-03-31" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+```bash cURL - With Filters
+curl -X GET "http://localhost:3001/api/reports/summary?area=Ensamble&turno=A&fecha_inicio=2024-03-01" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+```javascript JavaScript
+const getSummary = async (filters = {}) => {
+  const params = new URLSearchParams();
+  
+  if (filters.fecha_inicio) params.append('fecha_inicio', filters.fecha_inicio);
+  if (filters.fecha_fin) params.append('fecha_fin', filters.fecha_fin);
+  if (filters.area) params.append('area', filters.area);
+  if (filters.turno) params.append('turno', filters.turno);
+  if (filters.cadena) params.append('cadena', filters.cadena);
+  if (filters.categoria) params.append('categoria', filters.categoria);
+  
+  const response = await fetch(
+    `http://localhost:3001/api/reports/summary?${params}`,
+    {
+      headers: { 'Authorization': `Bearer ${getToken()}` }
+    }
+  );
+  
+  return await response.json();
+};
+
+// Usage examples
+const allTimeSummary = await getSummary();
+const marchSummary = await getSummary({
+  fecha_inicio: '2024-03-01',
+  fecha_fin: '2024-03-31'
+});
+const ensambleShiftA = await getSummary({
+  area: 'Ensamble',
+  turno: 'A',
+  fecha_inicio: '2024-03-01'
+});
+```
+
+```typescript TypeScript
+interface SummaryFilters {
+  fecha_inicio?: string;
+  fecha_fin?: string;
+  area?: string;
+  turno?: string;
+  cadena?: string;
+  categoria?: string;
+}
+
+interface SummaryResponse {
+  total_registros: number;
+  total_cantidad: number;
+  total_costo: number;
+}
+
+const getSummary = async (filters: SummaryFilters = {}): Promise<SummaryResponse> => {
+  const params = new URLSearchParams(
+    Object.entries(filters)
+      .filter(([_, v]) => v !== undefined)
+      .map(([k, v]) => [k, String(v)])
+  );
+  
+  const response = await fetch(
+    `http://localhost:3001/api/reports/summary?${params}`,
+    {
+      headers: { 'Authorization': `Bearer ${getToken()}` }
+    }
+  );
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch summary');
+  }
+  
+  return await response.json();
+};
+```
+</CodeGroup>
+
+## Response
+
+<ResponseField name="total_registros" type="number">
+  Total number of scrap records matching the filters
+</ResponseField>
+
+<ResponseField name="total_cantidad" type="number">
+  Sum of all TOTAL_PZAS (total pieces scrapped)
+</ResponseField>
+
+<ResponseField name="total_costo" type="number">
+  Sum of all COSTO values (total cost in USD)
+</ResponseField>
+
+### Success Response Example
+
+```json
+{
+  "total_registros": 1547,
+  "total_cantidad": 48923,
+  "total_costo": 125487.65
+}
+```
+
+## Dashboard Integration
+
+```typescript
+const DashboardSummary: React.FC = () => {
+  const [summary, setSummary] = useState<SummaryResponse | null>(null);
+  const [period, setPeriod] = useState<'today' | 'week' | 'month'>('today');
+  
+  useEffect(() => {
+    const fetchData = async () => {
+      const now = new Date();
+      let filters: SummaryFilters = {};
+      
+      switch (period) {
+        case 'today':
+          filters.fecha_inicio = now.toISOString().split('T')[0];
+          break;
+        case 'week':
+          const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+          filters.fecha_inicio = weekAgo.toISOString().split('T')[0];
+          break;
+        case 'month':
+          const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+          filters.fecha_inicio = monthAgo.toISOString().split('T')[0];
+          break;
+      }
+      
+      const data = await getSummary(filters);
+      setSummary(data);
+    };
+    
+    fetchData();
+  }, [period]);
+  
+  return (
+    <div className="dashboard">
+      <div className="card">
+        <h3>Total Records</h3>
+        <p className="metric">{summary?.total_registros || 0}</p>
+      </div>
+      <div className="card">
+        <h3>Total Quantity</h3>
+        <p className="metric">{summary?.total_cantidad || 0} pcs</p>
+      </div>
+      <div className="card">
+        <h3>Total Cost</h3>
+        <p className="metric">${(summary?.total_costo || 0).toFixed(2)}</p>
+      </div>
+    </div>
+  );
+};
+```
+
+## Comparative Analysis
+
+```javascript
+const comparePerio ds = async (period1, period2) => {
+  const [data1, data2] = await Promise.all([
+    getSummary(period1),
+    getSummary(period2)
+  ]);
+  
+  return {
+    records: {
+      current: data1.total_registros,
+      previous: data2.total_registros,
+      change: ((data1.total_registros - data2.total_registros) / data2.total_registros * 100).toFixed(1)
+    },
+    cost: {
+      current: data1.total_costo,
+      previous: data2.total_costo,
+      change: ((data1.total_costo - data2.total_costo) / data2.total_costo * 100).toFixed(1)
+    }
+  };
+};
+
+// Compare this month vs last month
+const now = new Date();
+const thisMonth = {
+  fecha_inicio: new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0],
+  fecha_fin: now.toISOString().split('T')[0]
+};
+const lastMonth = {
+  fecha_inicio: new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0],
+  fecha_fin: new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split('T')[0]
+};
+
+const comparison = await comparePeriods(thisMonth, lastMonth);
+console.log(`Cost change: ${comparison.cost.change}%`);
+```
+
+## Error Responses
+
+### 401 Unauthorized
+
+```json
+{
+  "error": "Token requerido"
+}
+```
+
+### 500 Internal Server Error
+
+```json
+{
+  "error": "Database query failed"
+}
+```
+
+## Performance Notes
+
+<Note>
+  This endpoint performs aggregation queries on the `pesaje` table. For large datasets (>100k records), consider adding database indexes on `FECHA_REGISTRO`, `AREA`, `TURNO`, and `CADENA` columns.
+</Note>
+
+<Warning>
+  The query excludes soft-deleted records (`ELIMINADO = 0 OR ELIMINADO IS NULL`).
+</Warning>
+
+## Related Endpoints
+
+- [By Area Report](/api/reports/by-area) - Breakdown by production area
+- [By Category Report](/api/reports/by-category) - Breakdown by scrap category
+- [Trend Report](/api/reports/trends) - Daily trend analysis

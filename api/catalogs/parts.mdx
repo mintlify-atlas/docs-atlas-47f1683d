@@ -1,0 +1,258 @@
+---
+title: 'Parts Catalog (CatNP)'
+api: 'GET /api/catalogs/catnp'
+description: 'Manage part numbers catalog with cost and weight data'
+---
+
+## Overview
+
+The Parts Catalog (Catálogo de Números de Parte - CatNP) stores part information including cost per unit, weight, and descriptions. This data is used for automatic cost calculation when registering scrap.
+
+<Note>
+  When scanning a barcode, the system automatically looks up the part in this catalog and fills in Material, Weight, and Cost fields.
+</Note>
+
+## Endpoints
+
+### List All Parts
+
+<CodeGroup>
+```bash GET - List All
+curl -X GET http://localhost:3001/api/catalogs/catnp \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+```bash GET - Get by ID
+curl -X GET http://localhost:3001/api/catalogs/catnp/1 \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+</CodeGroup>
+
+### Create Part
+
+<CodeGroup>
+```bash POST
+curl -X POST http://localhost:3001/api/catalogs/catnp \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "NP": "12345678",
+    "MATERIAL": "Conector A1 - 16 Pines",
+    "PESO": 0.25,
+    "COSTO": 2.45,
+    "TIPO": "Conector",
+    "DESCRIPCION": "Conector automotriz resistente al calor",
+    "activo": 1
+  }'
+```
+
+```javascript JavaScript
+const createPart = async (partData) => {
+  const response = await fetch('http://localhost:3001/api/catalogs/catnp', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${getToken()}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(partData)
+  });
+  return await response.json();
+};
+
+// Example usage
+await createPart({
+  NP: '12345678',
+  MATERIAL: 'Conector A1 - 16 Pines',
+  PESO: 0.25,
+  COSTO: 2.45,
+  TIPO: 'Conector',
+  DESCRIPCION: 'Conector automotriz resistente al calor',
+  activo: 1
+});
+```
+
+```typescript TypeScript
+import { CatNP } from './types';
+
+const createPart = async (partData: Omit<CatNP, 'ID'>): Promise<CatNP> => {
+  const response = await fetch('http://localhost:3001/api/catalogs/catnp', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${getToken()}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(partData)
+  });
+  
+  if (!response.ok) {
+    throw new Error('Failed to create part');
+  }
+  
+  return await response.json();
+};
+```
+</CodeGroup>
+
+### Update Part
+
+```bash
+curl -X PUT http://localhost:3001/api/catalogs/catnp/1 \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"COSTO": 2.75}'
+```
+
+### Delete Part (Soft)
+
+```bash
+curl -X DELETE http://localhost:3001/api/catalogs/catnp/1 \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+## Data Structure
+
+<ResponseField name="ID" type="number">
+  Unique identifier
+</ResponseField>
+
+<ResponseField name="NP" type="string" required>
+  Part number (typically 8-12 digits)
+</ResponseField>
+
+<ResponseField name="MATERIAL" type="string" required>
+  Material or part description
+</ResponseField>
+
+<ResponseField name="PESO" type="number" default={0}>
+  Weight per unit in kilograms
+</ResponseField>
+
+<ResponseField name="COSTO" type="number" default={0}>
+  Cost per unit in USD
+</ResponseField>
+
+<ResponseField name="TIPO" type="string">
+  Part type or category (e.g., "Conector", "Arnés", "Terminal")
+</ResponseField>
+
+<ResponseField name="DESCRIPCION" type="string">
+  Detailed description
+</ResponseField>
+
+<ResponseField name="activo" type="number">
+  Status: 1 = active, 0 = inactive
+</ResponseField>
+
+## Response Example
+
+```json
+[
+  {
+    "ID": 1,
+    "NP": "12345678",
+    "MATERIAL": "Conector A1 - 16 Pines",
+    "PESO": 0.25,
+    "COSTO": 2.45,
+    "TIPO": "Conector",
+    "DESCRIPCION": "Conector automotriz resistente al calor",
+    "activo": 1
+  },
+  {
+    "ID": 2,
+    "NP": "87654321",
+    "MATERIAL": "Arnés Principal 2.5m",
+    "PESO": 1.2,
+    "COSTO": 15.75,
+    "TIPO": "Arnés",
+    "DESCRIPCION": "Arnés principal con 24 circuitos",
+    "activo": 1
+  }
+]
+```
+
+## TypeScript Interface
+
+```typescript
+export interface CatNP {
+  ID: number;
+  NP: string;
+  MATERIAL: string;
+  PESO: number;
+  COSTO: number;
+  TIPO?: string;
+  DESCRIPCION?: string;
+  activo: number;
+}
+```
+
+## Barcode Scanner Integration
+
+When a barcode is scanned in the scrap registration form, the system:
+
+1. Searches for the part number in the CatNP catalog
+2. If found, auto-fills:
+   - **MATERIAL** field with the part description
+   - **PESO** field with the unit weight
+   - **COSTO** field with the unit cost
+3. The user then enters the quantity to calculate total cost
+
+<Note>
+  **Cost Calculation:** Total cost = Unit cost (COSTO) × Quantity (TOTAL_PZAS)
+</Note>
+
+## Permissions
+
+<CardGroup cols={2}>
+  <Card title="View" icon="eye">
+    All authenticated users
+  </Card>
+  <Card title="Create/Edit" icon="pencil">
+    `admin`, `calidad` roles only
+  </Card>
+</CardGroup>
+
+## Import/Export
+
+<Note>
+  Parts can be imported in bulk via CSV upload. The CSV should have columns: NP, MATERIAL, PESO, COSTO, TIPO, DESCRIPCION
+</Note>
+
+## Common Use Cases
+
+### Search for Part by Number
+
+```javascript
+const findPartByNumber = (partNumber, catalog) => {
+  return catalog.find(part => 
+    part.NP === partNumber && part.activo === 1
+  );
+};
+
+// Usage
+const scannedPart = findPartByNumber('12345678', catnpCatalog);
+if (scannedPart) {
+  form.setValues({
+    MATERIAL: scannedPart.MATERIAL,
+    PESO: scannedPart.PESO,
+    COSTO: scannedPart.COSTO
+  });
+}
+```
+
+### Calculate Total Cost
+
+```javascript
+const calculateTotalCost = (partCost, quantity) => {
+  return parseFloat(partCost) * parseInt(quantity);
+};
+
+// Usage
+const unitCost = 2.45; // from catalog
+const quantity = 150; // from user input
+const totalCost = calculateTotalCost(unitCost, quantity); // 367.50
+```
+
+## Related Endpoints
+
+- [Create Scrap Record](/api/scrap/create) - Register scrap using parts
+- [Backup Export](/api/admin/backup) - Export catalog for backup

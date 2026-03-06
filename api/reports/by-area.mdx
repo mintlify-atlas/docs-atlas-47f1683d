@@ -1,0 +1,269 @@
+---
+title: 'Report by Area'
+api: 'GET /api/reports/by-area'
+description: 'Get scrap statistics grouped by production area'
+---
+
+## Overview
+
+Retrieve scrap data aggregated by production area, showing quantity and cost breakdown for each area.
+
+## Authentication
+
+Requires valid JWT token.
+
+```
+Authorization: Bearer <token>
+```
+
+## Query Parameters
+
+<ParamField query="fecha_inicio" type="string">
+  Start date filter (YYYY-MM-DD format)
+</ParamField>
+
+<ParamField query="fecha_fin" type="string">
+  End date filter (YYYY-MM-DD format)
+</ParamField>
+
+## Request Example
+
+<CodeGroup>
+```bash cURL
+curl -X GET "http://localhost:3001/api/reports/by-area?fecha_inicio=2024-03-01&fecha_fin=2024-03-31" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+```javascript JavaScript
+const getByArea = async (startDate, endDate) => {
+  const params = new URLSearchParams();
+  if (startDate) params.append('fecha_inicio', startDate);
+  if (endDate) params.append('fecha_fin', endDate);
+  
+  const response = await fetch(
+    `http://localhost:3001/api/reports/by-area?${params}`,
+    {
+      headers: { 'Authorization': `Bearer ${getToken()}` }
+    }
+  );
+  
+  return await response.json();
+};
+```
+
+```typescript TypeScript
+interface AreaReport {
+  name: string;
+  cantidad: number;
+  costo: number;
+}
+
+const getByArea = async (
+  startDate?: string,
+  endDate?: string
+): Promise<AreaReport[]> => {
+  const params = new URLSearchParams();
+  if (startDate) params.append('fecha_inicio', startDate);
+  if (endDate) params.append('fecha_fin', endDate);
+  
+  const response = await fetch(
+    `http://localhost:3001/api/reports/by-area?${params}`,
+    {
+      headers: { 'Authorization': `Bearer ${getToken()}` }
+    }
+  );
+  
+  return await response.json();
+};
+```
+</CodeGroup>
+
+## Response
+
+Returns an array of area statistics, sorted by cost (highest first).
+
+<ResponseField name="name" type="string">
+  Area name
+</ResponseField>
+
+<ResponseField name="cantidad" type="number">
+  Total pieces scrapped in this area
+</ResponseField>
+
+<ResponseField name="costo" type="number">
+  Total cost (USD) for this area
+</ResponseField>
+
+### Success Response Example
+
+```json
+[
+  {
+    "name": "Ensamble",
+    "cantidad": 15420,
+    "costo": 45823.50
+  },
+  {
+    "name": "Moldeo",
+    "cantidad": 12305,
+    "costo": 32150.75
+  },
+  {
+    "name": "Inspección",
+    "cantidad": 8934,
+    "costo": 18640.20
+  },
+  {
+    "name": "Empaque",
+    "cantidad": 3215,
+    "costo": 6420.80
+  }
+]
+```
+
+## Visualization Examples
+
+### Bar Chart
+
+```typescript
+import { BarChart } from 'recharts';
+
+const AreaCostChart: React.FC = () => {
+  const [data, setData] = useState<AreaReport[]>([]);
+  
+  useEffect(() => {
+    const fetchData = async () => {
+      const report = await getByArea('2024-03-01', '2024-03-31');
+      setData(report);
+    };
+    fetchData();
+  }, []);
+  
+  return (
+    <BarChart width={600} height={400} data={data}>
+      <XAxis dataKey="name" />
+      <YAxis />
+      <Tooltip />
+      <Bar dataKey="costo" fill="#8884d8" />
+    </BarChart>
+  );
+};
+```
+
+### Top 5 Areas Table
+
+```typescript
+const TopAreasTable: React.FC = () => {
+  const [areas, setAreas] = useState<AreaReport[]>([]);
+  
+  useEffect(() => {
+    const fetchData = async () => {
+      const data = await getByArea();
+      setAreas(data.slice(0, 5)); // Top 5
+    };
+    fetchData();
+  }, []);
+  
+  return (
+    <table>
+      <thead>
+        <tr>
+          <th>Area</th>
+          <th>Quantity</th>
+          <th>Cost</th>
+          <th>Avg Cost/Unit</th>
+        </tr>
+      </thead>
+      <tbody>
+        {areas.map(area => (
+          <tr key={area.name}>
+            <td>{area.name}</td>
+            <td>{area.cantidad.toLocaleString()}</td>
+            <td>${area.costo.toFixed(2)}</td>
+            <td>${(area.costo / area.cantidad).toFixed(2)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+};
+```
+
+### Pie Chart (Cost Distribution)
+
+```javascript
+import { PieChart, Pie, Cell } from 'recharts';
+
+const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'];
+
+const AreaCostPie = ({ data }) => (
+  <PieChart width={400} height={400}>
+    <Pie
+      data={data}
+      dataKey="costo"
+      nameKey="name"
+      cx="50%"
+      cy="50%"
+      label={entry => `${entry.name}: $${entry.costo.toFixed(0)}`}
+    >
+      {data.map((entry, index) => (
+        <Cell key={index} fill={COLORS[index % COLORS.length]} />
+      ))}
+    </Pie>
+    <Tooltip />
+  </PieChart>
+);
+```
+
+## Drill-Down Analysis
+
+```javascript
+const drillDownArea = async (areaName, startDate, endDate) => {
+  // Get detailed records for specific area
+  const response = await fetch(
+    `http://localhost:3001/api/scrap?` +
+    `area=${areaName}&desde=${startDate}&hasta=${endDate}`,
+    {
+      headers: { 'Authorization': `Bearer ${getToken()}` }
+    }
+  );
+  
+  return await response.json();
+};
+
+// Click handler for chart
+const handleAreaClick = async (area) => {
+  const details = await drillDownArea(area.name, '2024-03-01', '2024-03-31');
+  showDetailsModal(details);
+};
+```
+
+## Cost Ranking
+
+```javascript
+const rankAreas = (areas) => {
+  return areas
+    .map((area, index) => ({
+      ...area,
+      rank: index + 1,
+      percentOfTotal: 0
+    }))
+    .map((area, _, arr) => {
+      const totalCost = arr.reduce((sum, a) => sum + a.costo, 0);
+      return {
+        ...area,
+        percentOfTotal: (area.costo / totalCost * 100).toFixed(1)
+      };
+    });
+};
+
+const rankedAreas = rankAreas(await getByArea());
+console.log('Top area:', rankedAreas[0].name, 
+            `(${rankedAreas[0].percentOfTotal}% of total cost)`);
+```
+
+## Related Endpoints
+
+- [Summary Report](/api/reports/summary) - Overall statistics
+- [By Category Report](/api/reports/by-category) - Grouped by category
+- [Areas Catalog](/api/catalogs/areas) - Area definitions

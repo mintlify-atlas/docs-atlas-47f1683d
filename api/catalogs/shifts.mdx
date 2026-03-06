@@ -1,0 +1,281 @@
+---
+title: 'Shifts Catalog'
+api: 'GET /api/catalogs/turnos'
+description: 'Manage shift schedules and assignments'
+---
+
+## Overview
+
+The Shifts catalog (Turnos) defines work shifts with their schedules and assigned managers. Shifts are used to categorize scrap records and generate shift-based reports.
+
+<Note>
+  Shifts typically follow a 24-hour rotation: Shift A (6:00-14:00), Shift B (14:00-22:00), Shift C (22:00-6:00)
+</Note>
+
+## Endpoints
+
+### List All Shifts
+
+<CodeGroup>
+```bash GET - List All
+curl -X GET http://localhost:3001/api/catalogs/turnos \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+```bash GET - Get by ID
+curl -X GET http://localhost:3001/api/catalogs/turnos/1 \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+</CodeGroup>
+
+### Create Shift
+
+<CodeGroup>
+```bash POST
+curl -X POST http://localhost:3001/api/catalogs/turnos \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "nombre": "Turno A - Mañana",
+    "codigo": "A",
+    "hora_inicio": 6,
+    "hora_fin": 14,
+    "gerente_id": 5,
+    "activo": 1
+  }'
+```
+
+```javascript JavaScript
+const createShift = async (shiftData) => {
+  const response = await fetch('http://localhost:3001/api/catalogs/turnos', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${getToken()}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(shiftData)
+  });
+  return await response.json();
+};
+
+// Example: Create all shifts
+const shifts = [
+  { nombre: 'Turno A - Mañana', codigo: 'A', hora_inicio: 6, hora_fin: 14, activo: 1 },
+  { nombre: 'Turno B - Tarde', codigo: 'B', hora_inicio: 14, hora_fin: 22, activo: 1 },
+  { nombre: 'Turno C - Noche', codigo: 'C', hora_inicio: 22, hora_fin: 6, activo: 1 }
+];
+
+for (const shift of shifts) {
+  await createShift(shift);
+}
+```
+</CodeGroup>
+
+### Update Shift
+
+```bash
+curl -X PUT http://localhost:3001/api/catalogs/turnos/1 \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"gerente_id": 7}'
+```
+
+### Delete Shift (Soft)
+
+```bash
+curl -X DELETE http://localhost:3001/api/catalogs/turnos/1 \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+## Data Structure
+
+<ResponseField name="id" type="number">
+  Unique identifier
+</ResponseField>
+
+<ResponseField name="nombre" type="string" required>
+  Shift name (e.g., "Turno A - Mañana", "Turno B - Tarde")
+</ResponseField>
+
+<ResponseField name="codigo" type="string" required>
+  Shift code (A, B, C, etc.)
+</ResponseField>
+
+<ResponseField name="hora_inicio" type="number" required>
+  Start hour in 24-hour format (0-23)
+</ResponseField>
+
+<ResponseField name="hora_fin" type="number" required>
+  End hour in 24-hour format (0-23)
+</ResponseField>
+
+<ResponseField name="gerente_id" type="number">
+  User ID of shift manager/supervisor
+</ResponseField>
+
+<ResponseField name="activo" type="number">
+  Status: 1 = active, 0 = inactive
+</ResponseField>
+
+## Response Example
+
+```json
+[
+  {
+    "id": 1,
+    "nombre": "Turno A - Mañana",
+    "codigo": "A",
+    "hora_inicio": 6,
+    "hora_fin": 14,
+    "gerente_id": 5,
+    "activo": 1
+  },
+  {
+    "id": 2,
+    "nombre": "Turno B - Tarde",
+    "codigo": "B",
+    "hora_inicio": 14,
+    "hora_fin": 22,
+    "gerente_id": 8,
+    "activo": 1
+  },
+  {
+    "id": 3,
+    "nombre": "Turno C - Noche",
+    "codigo": "C",
+    "hora_inicio": 22,
+    "hora_fin": 6,
+    "gerente_id": 12,
+    "activo": 1
+  }
+]
+```
+
+## TypeScript Interface
+
+```typescript
+export interface Turno {
+  id: number;
+  nombre: string;
+  codigo: string;
+  hora_inicio: number;
+  hora_fin: number;
+  gerente_id?: number;
+  activo: number;
+}
+```
+
+## Auto-Detect Current Shift
+
+Automatically determine the current shift based on system time:
+
+```javascript
+const getCurrentShift = (shifts) => {
+  const now = new Date();
+  const currentHour = now.getHours();
+  
+  for (const shift of shifts) {
+    if (shift.activo === 0) continue;
+    
+    // Handle overnight shifts (e.g., C: 22-6)
+    if (shift.hora_fin < shift.hora_inicio) {
+      if (currentHour >= shift.hora_inicio || currentHour < shift.hora_fin) {
+        return shift;
+      }
+    } else {
+      if (currentHour >= shift.hora_inicio && currentHour < shift.hora_fin) {
+        return shift;
+      }
+    }
+  }
+  
+  return null;
+};
+
+// Usage
+const currentShift = getCurrentShift(turnosCatalog);
+if (currentShift) {
+  console.log(`Current shift: ${currentShift.codigo} - ${currentShift.nombre}`);
+}
+```
+
+## Shift Reports
+
+Generate shift-specific reports:
+
+```javascript
+const getShiftReport = async (shiftCode, startDate, endDate) => {
+  const response = await fetch(
+    `http://localhost:3001/api/reports/by-turno?` +
+    `fecha_inicio=${startDate}&fecha_fin=${endDate}`,
+    {
+      headers: { 'Authorization': `Bearer ${getToken()}` }
+    }
+  );
+  
+  const data = await response.json();
+  return data.find(item => item.name === shiftCode);
+};
+```
+
+## Shift Handover
+
+Generate shift handover summary:
+
+```typescript
+interface ShiftSummary {
+  shift: string;
+  totalScrap: number;
+  totalCost: number;
+  topFailure: string;
+  notes: string[];
+}
+
+const generateShiftSummary = async (shiftCode: string): Promise<ShiftSummary> => {
+  const today = new Date().toISOString().split('T')[0];
+  
+  const response = await fetch(
+    `http://localhost:3001/api/scrap?turno=${shiftCode}&desde=${today}`,
+    {
+      headers: { 'Authorization': `Bearer ${getToken()}` }
+    }
+  );
+  
+  const { data } = await response.json();
+  
+  return {
+    shift: shiftCode,
+    totalScrap: data.length,
+    totalCost: data.reduce((sum, item) => sum + item.COSTO, 0),
+    topFailure: getMostCommonFailure(data),
+    notes: data.filter(item => item.COMENTARIOS).map(item => item.COMENTARIOS)
+  };
+};
+```
+
+## Permissions
+
+<CardGroup cols={2}>
+  <Card title="View" icon="eye">
+    All authenticated users
+  </Card>
+  <Card title="Create/Edit" icon="pencil">
+    `admin`, `calidad` roles only
+  </Card>
+</CardGroup>
+
+## Best Practices
+
+<Note>
+  **Consistent Codes:** Use single-letter codes (A, B, C) for easy data entry and reporting.
+</Note>
+
+<Warning>
+  **Overnight Shifts:** For shifts crossing midnight (e.g., 22:00-6:00), ensure `hora_fin < hora_inicio` is handled correctly in your logic.
+</Warning>
+
+## Related Endpoints
+
+- [Shift Report](/api/reports/by-area) - Scrap by shift
+- [Create Scrap Record](/api/scrap/create) - Register scrap for a shift
+- [Users Management](/api/admin/users) - Assign shift managers

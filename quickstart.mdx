@@ -1,80 +1,282 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Get started with APTIV Scrap Control in 5 minutes
+icon: rocket
 ---
 
-## Get started in three steps
+Learn how to use APTIV Scrap Control to register, monitor, and analyze scrap generated in production lines.
 
-Get your documentation site running locally and make your first customization.
+## Login to the System
 
-### Step 1: Set up your local environment
+APTIV Scrap Control works in two modes:
+- **MySQL Mode**: Connected to backend server (production)
+- **Local Mode**: Using browser localStorage (standalone)
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
+<Steps>
+  <Step title="Access the Application">
+    Open your browser and navigate to:
+    ```
+    http://<SERVER-IP>:8080
+    ```
     
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
+    <Note>
+    For standalone mode, open `dist/index.html` directly or use `npx serve dist`
+    </Note>
+  </Step>
+
+  <Step title="Choose Your Role">
+    The system supports multiple roles with different permissions:
+
+    <CardGroup cols={2}>
+      <Card title="Administrator" icon="shield">
+        Full system access including user management and permissions
+      </Card>
+      <Card title="Quality" icon="check-circle">
+        Manage catalogs, view reports, and handle quality issues
+      </Card>
+      <Card title="Supervisor" icon="users">
+        Register scrap, edit records, and view area reports
+      </Card>
+      <Card title="Operator" icon="user">
+        Register scrap and view own records
+      </Card>
+    </CardGroup>
+  </Step>
+
+  <Step title="Login with Demo Credentials">
+    Use the quick access buttons or enter credentials manually:
+
+    | Username | Password | Role |
+    |----------|----------|------|
+    | `admin` | `admin123` | Administrator |
+    | `calidad` | `calidad123` | Quality |
+    | `supervisor1` | `super123` | Supervisor |
+    | `operador1` | `oper123` | Operator |
+
+    ```tsx src/components/LoginPage.tsx
+    // Quick login buttons for demo access
+    const quickAccess = [
+      { label: 'Admin', g: 'admin', c: 'admin123', color: '#E4002B' },
+      { label: 'Calidad', g: 'calidad', c: 'calidad123', color: '#2563eb' },
+      { label: 'Supervisor', g: 'supervisor1', c: 'super123', color: '#059669' },
+      { label: 'Operador', g: 'operador1', c: 'oper123', color: '#7c3aed' },
+    ];
+    ```
+
+    <Warning>
+    Change these default credentials in production environments for security.
+    </Warning>
+  </Step>
+</Steps>
+
+## Register Your First Scrap Entry
+
+Once logged in, you can immediately start registering scrap records.
+
+<Steps>
+  <Step title="Navigate to Register Scrap">
+    Click on **"Registrar Scrap"** in the navigation menu. The system automatically detects the current shift based on time:
+
+    ```tsx src/components/RegisterScrap.tsx
+    // Auto-detect shift by current hour
+    const detectTurno = () => {
+      const hour = new Date().getHours();
+      if (hour >= 6 && hour < 14) setTurno('T1');      // 6am-2pm
+      else if (hour >= 14 && hour < 22) setTurno('T2'); // 2pm-10pm
+      else setTurno('T3');                              // 10pm-6am
+    };
+    ```
+  </Step>
+
+  <Step title="Fill in Required Fields">
+    The form requires these essential fields:
+
+    <CodeGroup>
+    ```typescript Field Definitions
+    interface ScrapEntry {
+      AREA: string;           // Production area
+      NP: string;             // Part number
+      MATERIAL: string;       // Material description
+      PESO: number;           // Unit weight (kg)
+      COSTO: number;          // Unit cost (USD)
+      CADENA: string;         // Production chain
+      TURNO: string;          // Shift (T1/T2/T3)
+      TOTAL_PZAS: number;     // Quantity (pieces)
+      MODO_FALLA: string;     // Failure mode
+      SUPERVISOR: string;     // Supervisor name
+    }
+    ```
+
+    ```typescript Auto-calculation
+    // System automatically calculates totals
+    const pesoTotal = pesoUnitario * cantidad;    // Total weight
+    const costoTotal = costoUnitario * cantidad;  // Total cost
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Use Barcode Scanner (Optional)">
+    The system supports USB barcode scanners for fast part number entry:
+
+    <Tip>
+    **Scanner Detection**: Automatically detects input if characters arrive less than 80ms apart
+    </Tip>
+
+    ```tsx src/components/RegisterScrap.tsx
+    // Barcode scanner detection logic
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const now = Date.now();
+      const timeDiff = now - lastScanTime;
+      
+      // Fast input = barcode scanner
+      if (timeDiff < 80 || scanBuffer.length === 0) {
+        scanBuffer += e.key;
+      }
+      
+      if (e.key === 'Enter') {
+        // Search part number in catalog
+        buscarNP(scanBuffer.trim());
+        scanBuffer = '';
+      }
+    };
+    ```
+
+    **Supported formats**: Code 128, Code 39, QR, DataMatrix, EAN/UPC
+  </Step>
+
+  <Step title="Submit the Entry">
+    Click **"Guardar"** to save the scrap entry. The system will:
+    - Validate all required fields
+    - Calculate total weight and cost
+    - Log the entry with timestamp
+    - Update dashboard metrics in real-time
+
+    <Note>
+    In MySQL mode, data is saved to the backend. In Local mode, data is stored in browser localStorage.
+    </Note>
+  </Step>
+</Steps>
+
+## View Dashboard and Reports
+
+After registering scrap entries, explore the analytics dashboard.
+
+<Steps>
+  <Step title="Access the Dashboard">
+    Click **"Dashboard"** in the navigation menu to see real-time metrics:
+
+    <CardGroup cols={2}>
+      <Card title="Today's Summary" icon="calendar">
+        Total scrap quantity and cost for current day
+      </Card>
+      <Card title="Weekly Trends" icon="chart-line">
+        7-day comparison with previous week
+      </Card>
+      <Card title="Top Areas" icon="industry">
+        Areas with highest scrap generation
+      </Card>
+      <Card title="Failure Modes" icon="triangle-exclamation">
+        Most common failure modes
+      </Card>
+    </CardGroup>
+  </Step>
+
+  <Step title="Explore Visualizations">
+    The dashboard provides multiple chart types:
+
+    ```tsx src/components/Dashboard.tsx
+    // Calculate today's metrics
+    const todayQty = todayRecords.reduce((sum, r) => 
+      sum + Number(r.TOTAL_PZAS || 0), 0
+    );
     
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
+    const todayCost = todayRecords.reduce((sum, r) => 
+      sum + (r.COSTO || 0), 0
+    );
     
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    // Weekly trend comparison
+    const weekChange = prevWeekCost > 0 
+      ? ((weekCost - prevWeekCost) / prevWeekCost * 100) 
+      : 0;
+    ```
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+    **Available Charts**:
+    - Line chart: 30-day trend
+    - Bar chart: Scrap by area/shift
+    - Pie chart: Category distribution
+    - Table: Top 5 part numbers
+  </Step>
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+  <Step title="Generate Reports">
+    Navigate to **"Reportes"** for detailed analysis:
+    - **By Area**: Scrap breakdown per production area
+    - **By Category**: Classification by scrap type
+    - **By Shift**: T1, T2, T3 comparison
+    - **By Production Chain**: Cadena analysis
+    - **Top Parts**: Highest cost part numbers
+    - **Top Failures**: Most frequent failure modes
 
-### Step 3: Go live
+    <Tip>
+    Export reports to PDF or CSV using the export buttons in each section.
+    </Tip>
+  </Step>
+</Steps>
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
+## Next Steps
 
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Installation" icon="download" href="/installation">
+    Deploy the full system with Docker and MySQL
+  </Card>
+  <Card title="User Management" icon="users-gear" href="/user-management/roles-permissions">
+    Create user accounts and configure roles
+  </Card>
+  <Card title="Catalogs" icon="database" href="/configuration/catalogs">
+    Manage areas, part numbers, and failure modes
+  </Card>
+  <Card title="API Reference" icon="code" href="/api">
+    Integrate with external systems
+  </Card>
 </CardGroup>
 
+## Common Workflows
+
+<AccordionGroup>
+  <Accordion title="Daily Scrap Registration">
+    1. Login at shift start
+    2. Register scrap entries as they occur
+    3. Use barcode scanner for speed
+    4. Review shift summary before close
+    5. Export daily report for management
+  </Accordion>
+
+  <Accordion title="Quality Analysis">
+    1. Access Reports section
+    2. Filter by date range
+    3. Identify top failure modes
+    4. Export data for root cause analysis
+    5. Set tolerance thresholds
+  </Accordion>
+
+  <Accordion title="Supervisor Review">
+    1. Check dashboard metrics
+    2. Review area performance
+    3. Edit/correct same-day entries
+    4. View real-time alerts
+    5. Approve shift closure
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+<Warning>
+**Login Failed**: Verify credentials and check if backend is accessible (MySQL mode)
+</Warning>
+
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+**Scanner Not Working**: Ensure scanner is in HID keyboard mode and configured to send Enter after scan
 </Note>
+
+<Tip>
+**Data Not Showing**: Check localStorage is not full (5-10MB limit). Use "Reiniciar Aplicación" in Backups if needed.
+</Tip>

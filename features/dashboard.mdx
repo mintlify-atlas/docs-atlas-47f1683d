@@ -1,0 +1,510 @@
+---
+title: Dashboard
+description: Real-time analytics with KPI cards, trend charts, and tolerance monitoring
+icon: 'chart-line'
+---
+
+The Dashboard provides real-time visibility into scrap metrics across the entire operation. It displays KPIs, trend charts, area breakdowns, and tolerance status for quick decision-making.
+
+## Overview
+
+The dashboard automatically refreshes when new scrap is registered and provides multiple visualization types to understand scrap patterns.
+
+<CardGroup cols={2}>
+  <Card title="Real-Time KPIs" icon="gauge-high">
+    Live metrics for today, this week, and trend comparisons
+  </Card>
+  <Card title="Interactive Charts" icon="chart-mixed">
+    Line, bar, and pie charts built with Recharts library
+  </Card>
+  <Card title="Tolerance Monitoring" icon="triangle-exclamation">
+    Visual alerts when scrap exceeds configured thresholds
+  </Card>
+  <Card title="Multi-Dimensional Views" icon="cube">
+    Analyze by area, shift, category, chain, and part number
+  </Card>
+</CardGroup>
+
+## Key Performance Indicators (KPIs)
+
+The top row displays 5 critical metrics:
+
+### 1. Scrap Today
+
+```tsx
+// From Dashboard.tsx:46
+const todayQty = todayRecords.reduce((s, r) => s + Number(r.TOTAL_PZAS || 0), 0);
+```
+
+- **Value**: Total pieces scrapped today
+- **Color**: Red (#E4002B — APTIV brand color)
+- **Icon**: Package icon
+- **Updates**: Real-time as records are added
+
+### 2. Cost Today
+
+```tsx
+// From Dashboard.tsx:47
+const todayCost = todayRecords.reduce((s, r) => s + (r.COSTO || 0), 0);
+```
+
+- **Value**: Total cost in USD for today
+- **Format**: Currency with 2 decimal places
+- **Color**: Orange (#f59e0b)
+- **Icon**: Dollar sign
+
+### 3. Scrap This Week
+
+```tsx
+// From Dashboard.tsx:48-49
+const weekQty = weekRecords.reduce((s, r) => s + Number(r.TOTAL_PZAS || 0), 0);
+const weekCost = weekRecords.reduce((s, r) => s + (r.COSTO || 0), 0);
+```
+
+- **Value**: Total pieces for current week (Monday-Sunday)
+- **Subtitle**: Shows week cost
+- **Color**: Blue (#2563eb)
+- **Icon**: Activity icon
+
+### 4. Top Area
+
+```tsx
+// From Dashboard.tsx:53-55
+const areaMap = new Map<string, number>();
+todayRecords.forEach(r => areaMap.set(r.AREA, (areaMap.get(r.AREA) || 0) + Number(r.TOTAL_PZAS || 0)));
+const topArea = [...areaMap.entries()].sort((a, b) => b[1] - a[1])[0];
+```
+
+- **Value**: Area with highest scrap today
+- **Subtitle**: Piece count for that area
+- **Color**: Purple (#7c3aed)
+- **Icon**: Alert triangle
+
+### 5. Week-over-Week Change
+
+```tsx
+// From Dashboard.tsx:50-51
+const prevWeekCost = prevWeekRecords.reduce((s, r) => s + (r.COSTO || 0), 0);
+const weekChange = prevWeekCost > 0 ? ((weekCost - prevWeekCost) / prevWeekCost * 100) : 0;
+```
+
+- **Value**: Percentage change vs. previous week
+- **Color**: Green if decrease, Red if increase
+- **Icon**: Trending up/down arrow
+- **Logic**: Compares current week (Mon-today) with previous week (Mon-Sun)
+
+<Note>
+  A **positive percentage** (red) means scrap **increased** — this is bad.  
+  A **negative percentage** (green) means scrap **decreased** — this is good.
+</Note>
+
+## Charts & Visualizations
+
+All charts use the **Recharts** library and support interactive tooltips.
+
+### 1. Trend Line Chart (30 Days)
+
+<Tabs>
+  <Tab title="Overview">
+    Displays scrap quantity and cost over the last 30 days.
+
+    ```tsx
+    // From Dashboard.tsx:61-74
+    const trendData = useMemo(() => {
+      const data = [];
+      for (let i = 29; i >= 0; i--) {
+        const d = subDays(today, i);
+        const ds = startOfDay(d); const de = endOfDay(d);
+        const dayRecs = pesajes.filter(p => { 
+          const pd = new Date(p.FECHA_REGISTRO); 
+          return isWithinInterval(pd, { start: ds, end: de });
+        });
+        data.push({
+          fecha: format(d, 'dd/MM', { locale: es }),
+          cantidad: dayRecs.reduce((s, r) => s + Number(r.TOTAL_PZAS || 0), 0),
+          costo: Math.round(dayRecs.reduce((s, r) => s + (r.COSTO || 0), 0) * 100) / 100,
+        });
+      }
+      return data;
+    }, [pesajes, today]);
+    ```
+
+    - **X-Axis**: Date (dd/MM format)
+    - **Y-Axis**: Quantity and cost
+    - **Lines**: 
+      - Red line = Quantity (pieces)
+      - Blue line = Cost (USD)
+    - **Smoothing**: Monotone interpolation
+  </Tab>
+  
+  <Tab title="Implementation">
+    ```tsx
+    // From Dashboard.tsx:196-207
+    <LineChart data={trendData}>
+      <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
+      <XAxis dataKey="fecha" tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} />
+      <YAxis tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} />
+      <Tooltip contentStyle={tooltipStyle} />
+      <Line type="monotone" dataKey="cantidad" stroke="#E4002B" strokeWidth={2} dot={false} name="Cantidad" />
+      <Line type="monotone" dataKey="costo" stroke="#2563eb" strokeWidth={2} dot={false} name="Costo $" />
+      <Legend />
+    </LineChart>
+    ```
+  </Tab>
+  
+  <Tab title="Use Case">
+    **What it shows:**
+    - Daily scrap patterns and trends
+    - Spikes indicating production issues
+    - Cost correlations with quantity
+    - Weekly cycles (e.g., higher scrap on Mondays)
+
+    **Action insights:**
+    - Investigate dates with sudden spikes
+    - Compare weekday vs weekend patterns
+    - Validate if cost increases match quantity increases
+  </Tab>
+</Tabs>
+
+### 2. Scrap by Area (Bar Chart)
+
+```tsx
+// From Dashboard.tsx:76-80
+const byArea = useMemo(() => {
+  const map = new Map<string, { qty: number; cost: number }>();
+  pesajes.forEach(r => { 
+    const cur = map.get(r.AREA) || { qty: 0, cost: 0 }; 
+    map.set(r.AREA, { qty: cur.qty + Number(r.TOTAL_PZAS || 0), cost: cur.cost + (r.COSTO || 0) });
+  });
+  return [...map.entries()].map(([name, v]) => ({ name, cantidad: v.qty, costo: Math.round(v.cost) })).sort((a, b) => b.costo - a.costo);
+}, [pesajes]);
+```
+
+- **Type**: Vertical bar chart
+- **X-Axis**: Area name
+- **Y-Axis**: Total cost (USD)
+- **Sorting**: Highest cost first
+- **Color**: Red (#E4002B)
+- **Purpose**: Identify which areas generate most scrap
+
+### 3. By Category (Pie Chart)
+
+```tsx
+// From Dashboard.tsx:82-86
+const byCategory = useMemo(() => {
+  const map = new Map<string, number>();
+  pesajes.forEach(r => { 
+    const cat = r.CATEGORIA || 'Sin categoría'; 
+    map.set(cat, (map.get(cat) || 0) + Number(r.TOTAL_PZAS || 0));
+  });
+  return [...map.entries()].map(([name, value]) => ({ name, value }));
+}, [pesajes]);
+```
+
+- **Type**: Pie chart with percentage labels
+- **Slices**: Each scrap category
+- **Colors**: Rotates through 8-color palette
+- **Labels**: Category name + percentage
+- **Use**: Understand scrap distribution by type
+
+### 4. By Shift (Bar Chart)
+
+```tsx
+// From Dashboard.tsx:88-92
+const byTurno = useMemo(() => {
+  const map = new Map<string, { qty: number; cost: number }>();
+  pesajes.forEach(r => { 
+    const cur = map.get(r.TURNO) || { qty: 0, cost: 0 }; 
+    map.set(r.TURNO, { qty: cur.qty + Number(r.TOTAL_PZAS || 0), cost: cur.cost + (r.COSTO || 0) });
+  });
+  return [...map.entries()].map(([name, v]) => ({ name, cantidad: v.qty, costo: Math.round(v.cost) }));
+}, [pesajes]);
+```
+
+- **Type**: Bar chart
+- **X-Axis**: Shift name (T1, T2, T3)
+- **Y-Axis**: Quantity (pieces)
+- **Color**: Purple (#7c3aed)
+- **Insight**: Compare shift performance
+
+### 5. Top 5 Parts by Cost (Horizontal Bar)
+
+```tsx
+// From Dashboard.tsx:94-98
+const topParts = useMemo(() => {
+  const map = new Map<string, number>();
+  pesajes.forEach(r => map.set(r.NP, (map.get(r.NP) || 0) + (r.COSTO || 0)));
+  return [...map.entries()].map(([name, costo]) => ({ name, costo: Math.round(costo) })).sort((a, b) => b.costo - a.costo).slice(0, 5);
+}, [pesajes]);
+```
+
+- **Type**: Horizontal bar chart
+- **Y-Axis**: Part number
+- **X-Axis**: Cost (USD)
+- **Limit**: Top 5 only
+- **Color**: Orange (#f59e0b)
+- **Purpose**: Focus improvement efforts on costliest parts
+
+### 6. Cost by Chain (Bar Chart)
+
+```tsx
+// From Dashboard.tsx:100-104
+const byCadena = useMemo(() => {
+  const map = new Map<string, number>();
+  pesajes.forEach(r => map.set(r.CADENA, (map.get(r.CADENA) || 0) + (r.COSTO || 0)));
+  return [...map.entries()].map(([name, costo]) => ({ name, costo: Math.round(costo) })).sort((a, b) => b.costo - a.costo);
+}, [pesajes]);
+```
+
+- **Type**: Bar chart
+- **X-Axis**: Production chain name
+- **Y-Axis**: Total cost
+- **Color**: Green (#059669)
+- **Sorting**: Descending by cost
+
+## Tolerance Monitoring
+
+The dashboard displays real-time status of configured tolerances.
+
+### Tolerance Status Calculation
+
+```tsx
+// From Dashboard.tsx:106-124
+const toleranceStatus = useMemo(() => {
+  return state.tolerancias.filter(t => t.activo).map(t => {
+    let rr = pesajes;
+    if (t.tipo_objetivo === 'area') rr = pesajes.filter(p => p.AREA === t.objetivo_id);
+    else if (t.tipo_objetivo === 'cadena') rr = pesajes.filter(p => p.CADENA === t.objetivo_id);
+    else if (t.tipo_objetivo === 'categoria') rr = pesajes.filter(p => p.CATEGORIA === t.objetivo_id);
+    
+    const now = new Date();
+    if (t.tipo_periodo === 'diario') rr = rr.filter(p => isWithinInterval(new Date(p.FECHA_REGISTRO), { start: startOfDay(now), end: endOfDay(now) }));
+    else if (t.tipo_periodo === 'semanal') rr = rr.filter(p => isWithinInterval(new Date(p.FECHA_REGISTRO), { start: startOfWeek(now, { weekStartsOn: 1 }), end: endOfDay(now) }));
+    else { const ms = new Date(now.getFullYear(), now.getMonth(), 1); rr = rr.filter(p => { const d = new Date(p.FECHA_REGISTRO); return d >= ms && d <= now; }); }
+    
+    const totalQty = rr.reduce((s, r) => s + Number(r.TOTAL_PZAS || 0), 0);
+    const totalCost = rr.reduce((s, r) => s + (r.COSTO || 0), 0);
+    const qtyPct = t.cantidad_max > 0 ? (totalQty / t.cantidad_max) * 100 : 0;
+    const costPct = t.costo_max > 0 ? (totalCost / t.costo_max) * 100 : 0;
+    const maxPct = Math.max(qtyPct, costPct);
+    const status = maxPct >= 100 ? 'red' : maxPct >= t.porcentaje_alerta ? 'yellow' : 'green';
+    return { ...t, totalQty, totalCost, qtyPct, costPct, maxPct, status };
+  });
+}, [state.tolerancias, pesajes]);
+```
+
+### Status Indicators
+
+<CardGroup cols={3}>
+  <Card title="🟢 Within Meta" icon="circle-check" color="#22c55e">
+    Scrap is below alert threshold (e.g., < 80% of max)
+  </Card>
+  <Card title="🟡 Warning" icon="triangle-exclamation" color="#eab308">
+    Scrap reached alert level (e.g., 80-99% of max)
+  </Card>
+  <Card title="🔴 Exceeded" icon="circle-xmark" color="#ef4444">
+    Scrap exceeded maximum threshold (≥ 100%). Animated pulse effect.
+  </Card>
+</CardGroup>
+
+### Tolerance Card Display
+
+```tsx
+// From Dashboard.tsx:154-190
+<div style={cardStyle}>
+  <h3>Estado de Tolerancias</h3>
+  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '12px' }}>
+    {toleranceStatus.map(t => (
+      <div key={t.id}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>{t.nombre}</span>
+          <span style={{ background: statusColor, color: statusColor }}>
+            {t.status === 'green' ? '🟢 OK' : t.status === 'yellow' ? '🟡 Alerta' : '🔴 Excedido'}
+          </span>
+        </div>
+        <div style={{ width: '100%', height: '8px', borderRadius: '4px', background: 'var(--border-color)' }}>
+          <div style={{ width: `${Math.min(t.maxPct, 100)}%`, background: statusColor }} />
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <span>{t.totalQty}/{t.cantidad_max} pzas</span>
+          <span>${t.totalCost.toFixed(0)}/${t.costo_max} USD</span>
+        </div>
+      </div>
+    ))}
+  </div>
+</div>
+```
+
+**Features:**
+- Progress bar shows percentage of max
+- Shows both quantity and cost limits
+- Animated red pulse when exceeded
+- Responsive grid layout
+
+<Warning>
+  Exceeded tolerances trigger visual alerts but do **not** block scrap registration. They are informational only.
+</Warning>
+
+## Top Failure Mode Alert
+
+Displays the most common failure reason for today:
+
+```tsx
+// From Dashboard.tsx:57-59
+const fallaMap = new Map<string, number>();
+todayRecords.forEach(r => { 
+  if (r.MODO_FALLA && r.MODO_FALLA !== '-') 
+    fallaMap.set(r.MODO_FALLA, (fallaMap.get(r.MODO_FALLA) || 0) + 1);
+});
+const topFalla = [...fallaMap.entries()].sort((a, b) => b[1] - a[1])[0];
+```
+
+<Note>
+  **Example:**  
+  "Top motivo hoy: **Defecto de material** (12 incidencias)"
+
+  This helps supervisors quickly identify recurring issues.
+</Note>
+
+## Data Filtering & Time Ranges
+
+### Today's Data
+
+```tsx
+// From Dashboard.tsx:28-35
+const today = new Date();
+const todayStart = startOfDay(today);
+const todayEnd = endOfDay(today);
+
+const todayRecords = useMemo(() =>
+  pesajes.filter(p => { 
+    const d = new Date(p.FECHA_REGISTRO); 
+    return isWithinInterval(d, { start: todayStart, end: todayEnd });
+  }),
+  [pesajes, todayStart, todayEnd]
+);
+```
+
+### This Week's Data
+
+```tsx
+// From Dashboard.tsx:36-39
+const weekStart = startOfWeek(today, { weekStartsOn: 1 }); // Monday
+
+const weekRecords = useMemo(() =>
+  pesajes.filter(p => { 
+    const d = new Date(p.FECHA_REGISTRO); 
+    return isWithinInterval(d, { start: weekStart, end: todayEnd });
+  }),
+  [pesajes, weekStart, todayEnd]
+);
+```
+
+### Previous Week's Data
+
+```tsx
+// From Dashboard.tsx:41-44
+const prevWeekStart = subDays(weekStart, 7);
+const prevWeekRecords = useMemo(() =>
+  pesajes.filter(p => { 
+    const d = new Date(p.FECHA_REGISTRO); 
+    return isWithinInterval(d, { start: prevWeekStart, end: subDays(weekStart, 1) });
+  }),
+  [pesajes, prevWeekStart, weekStart]
+);
+```
+
+<Note>
+  All date filtering uses `date-fns` library with `isWithinInterval` for accurate boundary checks.
+</Note>
+
+## Theme Support
+
+All charts and cards use CSS variables for dark/light theme support:
+
+```tsx
+// From Dashboard.tsx:10-23
+const cardStyle: React.CSSProperties = {
+  background: 'var(--bg-card)',
+  border: '1px solid var(--border-color)',
+  borderRadius: '12px',
+  padding: '16px',
+};
+
+const tooltipStyle = {
+  background: 'var(--modal-bg)',
+  border: '1px solid var(--border-color)',
+  borderRadius: 8,
+  color: 'var(--text-primary)',
+};
+```
+
+**CSS Variables Used:**
+- `--bg-card` — Card background
+- `--border-color` — Border and grid color
+- `--text-primary` — Main text color
+- `--text-secondary` — Secondary text (labels, axes)
+- `--chart-grid` — Chart grid lines
+- `--modal-bg` — Tooltip background
+
+## Performance Optimization
+
+All data aggregations use `useMemo` hooks to prevent unnecessary recalculations:
+
+```tsx
+const byArea = useMemo(() => {
+  // expensive calculation
+}, [pesajes]); // only recalculates when pesajes changes
+```
+
+**Benefits:**
+- Charts don't re-render on unrelated state changes
+- Smooth scrolling and interactions
+- Handles large datasets (1000+ records) efficiently
+
+## Responsive Design
+
+All chart containers use `ResponsiveContainer` from Recharts:
+
+```tsx
+<ResponsiveContainer width="100%" height={250}>
+  <LineChart data={trendData}>
+    {/* ... */}
+  </LineChart>
+</ResponsiveContainer>
+```
+
+**Grid Layouts:**
+- KPI cards: `repeat(auto-fit, minmax(180px, 1fr))`
+- Large charts: `repeat(auto-fit, minmax(400px, 1fr))`
+- Small charts: `repeat(auto-fit, minmax(280px, 1fr))`
+
+This ensures proper layout on desktop, tablet, and large mobile screens.
+
+## Permissions
+
+The dashboard is visible to all authenticated users. No special permission required.
+
+**Data Filtering by Role:**
+- **Operators** — See all data (no filtering)
+- **Supervisors** — See all data
+- **Quality** — See all data
+- **Admin** — Full visibility
+
+<Note>
+  Future enhancement: Add area-specific filtering for supervisors to see only their area's data.
+</Note>
+
+## Related Pages
+
+<CardGroup cols={3}>
+  <Card title="Scrap Registration" icon="clipboard" href="/features/scrap-registration">
+    Register new scrap records
+  </Card>
+  <Card title="Reports" icon="file-chart-column" href="/features/reports">
+    Detailed reports with export options
+  </Card>
+  <Card title="Tolerances" icon="ruler" href="/features/tolerances">
+    Configure scrap limits and alerts
+  </Card>
+</CardGroup>

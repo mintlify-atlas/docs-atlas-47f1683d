@@ -1,0 +1,664 @@
+---
+title: Network Setup
+description: Configure LAN access, firewall rules, and IP addressing for multi-user APTIV Scrap Control deployment
+icon: network-wired
+---
+
+## Overview
+
+This guide covers network configuration for deploying APTIV Scrap Control on a local area network (LAN), allowing multiple users to access the system from different devices.
+
+<Note>
+  Network setup is required for Docker deployments where multiple users need to access the system. Standalone deployments typically run on individual machines.
+</Note>
+
+## Network Architecture
+
+```
+┌─────────────────────────────────────────────────┐
+│                  LAN Network                    │
+│            (e.g., 192.168.1.0/24)               │
+│                                                 │
+│  ┌──────────────┐  ┌──────────────┐           │
+│  │   Client 1   │  │   Client 2   │  ...      │
+│  │  192.168.1.x │  │  192.168.1.y │           │
+│  │   Browser    │  │   Browser    │           │
+│  └──────┬───────┘  └──────┬───────┘           │
+│         │                 │                    │
+│         │  HTTP :8080     │                    │
+│         │  API  :3001     │                    │
+│         └────────┬────────┘                    │
+│                  │                             │
+│         ┌────────▼────────┐                    │
+│         │  Server Host    │                    │
+│         │  192.168.1.100  │ (Static IP)        │
+│         │                 │                    │
+│         │  ┌───────────┐  │                    │
+│         │  │   Nginx   │  │ :8080              │
+│         │  │  :80      │  │                    │
+│         │  └─────┬─────┘  │                    │
+│         │        │        │                    │
+│         │  ┌─────▼─────┐  │                    │
+│         │  │    API    │  │ :3001              │
+│         │  │  :3001    │  │                    │
+│         │  └─────┬─────┘  │                    │
+│         │        │        │                    │
+│         │  ┌─────▼─────┐  │                    │
+│         │  │   MySQL   │  │ :3306              │
+│         │  │  :3306    │  │                    │
+│         │  └───────────┘  │                    │
+│         └─────────────────┘                    │
+└─────────────────────────────────────────────────┘
+```
+
+## Server Network Configuration
+
+### Assign Static IP Address
+
+Configuring a static IP ensures the server is always accessible at the same address.
+
+<Steps>
+  <Step title="Linux (Ubuntu/Debian) - Netplan">
+    Edit `/etc/netplan/01-netcfg.yaml`:
+    
+    ```yaml
+    network:
+      version: 2
+      renderer: networkd
+      ethernets:
+        eth0:  # Your network interface name
+          dhcp4: no
+          addresses:
+            - 192.168.1.100/24  # Static IP and subnet
+          routes:
+            - to: default
+              via: 192.168.1.1  # Gateway
+          nameservers:
+            addresses:
+              - 8.8.8.8
+              - 8.8.4.4
+    ```
+    
+    Apply configuration:
+    ```bash
+    sudo netplan apply
+    ```
+  </Step>
+  
+  <Step title="Linux (CentOS/RHEL) - Network Scripts">
+    Edit `/etc/sysconfig/network-scripts/ifcfg-eth0`:
+    
+    ```bash
+    DEVICE=eth0
+    BOOTPROTO=static
+    ONBOOT=yes
+    IPADDR=192.168.1.100
+    NETMASK=255.255.255.0
+    GATEWAY=192.168.1.1
+    DNS1=8.8.8.8
+    DNS2=8.8.4.4
+    ```
+    
+    Restart networking:
+    ```bash
+    sudo systemctl restart network
+    ```
+  </Step>
+  
+  <Step title="Windows Server">
+    1. Open **Network and Sharing Center**
+    2. Click **Change adapter settings**
+    3. Right-click network adapter → **Properties**
+    4. Select **Internet Protocol Version 4 (TCP/IPv4)** → **Properties**
+    5. Select **Use the following IP address**:
+       - **IP address:** `192.168.1.100`
+       - **Subnet mask:** `255.255.255.0`
+       - **Default gateway:** `192.168.1.1`
+       - **Preferred DNS:** `8.8.8.8`
+    6. Click **OK** to save
+  </Step>
+  
+  <Step title="Verify Configuration">
+    ```bash
+    # Linux
+    ip addr show
+    ip route show
+    
+    # Windows
+    ipconfig
+    ```
+    
+    Test connectivity:
+    ```bash
+    ping 192.168.1.1  # Gateway
+    ping 8.8.8.8      # Internet
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+  **Important:** Ensure the static IP you choose (e.g., 192.168.1.100) is:
+  - Outside your DHCP range to avoid conflicts
+  - Within your network subnet
+  - Reserved in your router's DHCP settings
+</Warning>
+
+## Firewall Configuration
+
+### Required Ports
+
+The following ports must be accessible on the server:
+
+| Port | Service | Protocol | Required | Description |
+|------|---------|----------|----------|-------------|
+| `8080` | Nginx (Frontend) | TCP | ✅ Yes | Web application access |
+| `3001` | Node.js API | TCP | ⚠️ Optional | API endpoint (if not proxied through Nginx) |
+| `3306` | MySQL | TCP | ❌ No | Database (internal only, should not be exposed) |
+| `8081` | Adminer | TCP | ❌ No | Database admin tool (optional, development only) |
+
+<Note>
+  **Best Practice:** Only expose port 8080 publicly. The API (3001) should be accessed through Nginx's proxy configuration. MySQL (3306) should never be exposed to the network.
+</Note>
+
+### Linux Firewall (UFW)
+
+<Steps>
+  <Step title="Install and Enable UFW">
+    ```bash
+    # Ubuntu/Debian
+    sudo apt-get install ufw
+    
+    # Enable firewall
+    sudo ufw enable
+    ```
+  </Step>
+  
+  <Step title="Configure Default Policies">
+    ```bash
+    # Deny all incoming by default
+    sudo ufw default deny incoming
+    
+    # Allow all outgoing by default
+    sudo ufw default allow outgoing
+    ```
+  </Step>
+  
+  <Step title="Open Required Ports">
+    ```bash
+    # Allow SSH (important - don't lock yourself out!)
+    sudo ufw allow 22/tcp
+    
+    # Allow web application
+    sudo ufw allow 8080/tcp comment 'APTIV Scrap Control - Web'
+    
+    # Optional: Allow API direct access (if needed)
+    sudo ufw allow 3001/tcp comment 'APTIV Scrap Control - API'
+    
+    # Optional: Allow Adminer (development only)
+    # sudo ufw allow 8081/tcp comment 'APTIV Scrap Control - Adminer'
+    ```
+  </Step>
+  
+  <Step title="Verify Rules">
+    ```bash
+    sudo ufw status verbose
+    ```
+    
+    Expected output:
+    ```
+    Status: active
+    
+    To                         Action      From
+    --                         ------      ----
+    22/tcp                     ALLOW       Anywhere
+    8080/tcp                   ALLOW       Anywhere  # APTIV Scrap Control - Web
+    3001/tcp                   ALLOW       Anywhere  # APTIV Scrap Control - API
+    ```
+  </Step>
+</Steps>
+
+### Linux Firewall (firewalld)
+
+<Steps>
+  <Step title="Configure firewalld (CentOS/RHEL)">
+    ```bash
+    # Start and enable firewalld
+    sudo systemctl start firewalld
+    sudo systemctl enable firewalld
+    
+    # Open ports
+    sudo firewall-cmd --permanent --add-port=8080/tcp
+    sudo firewall-cmd --permanent --add-port=3001/tcp
+    
+    # Reload firewall
+    sudo firewall-cmd --reload
+    
+    # Verify
+    sudo firewall-cmd --list-all
+    ```
+  </Step>
+</Steps>
+
+### Windows Firewall
+
+<Steps>
+  <Step title="Open Windows Firewall with Advanced Security">
+    - Press **Win + R**, type `wf.msc`, press Enter
+  </Step>
+  
+  <Step title="Create Inbound Rules">
+    For each port (8080, 3001):
+    
+    1. Click **Inbound Rules** → **New Rule**
+    2. Select **Port** → **Next**
+    3. Select **TCP**, enter port number → **Next**
+    4. Select **Allow the connection** → **Next**
+    5. Check all profiles (Domain, Private, Public) → **Next**
+    6. Name: "APTIV Scrap Control - Web" → **Finish**
+  </Step>
+  
+  <Step title="Verify Rules">
+    ```powershell
+    # PowerShell command to list firewall rules
+    Get-NetFirewallRule | Where-Object {$_.DisplayName -like "*APTIV*"}
+    ```
+  </Step>
+</Steps>
+
+### Testing Port Accessibility
+
+From a client machine on the network:
+
+<CodeGroup>
+  ```bash Linux/Mac
+  # Test port connectivity
+  nc -zv 192.168.1.100 8080
+  nc -zv 192.168.1.100 3001
+  
+  # Alternative with telnet
+  telnet 192.168.1.100 8080
+  ```
+  
+  ```powershell Windows
+  # Test port connectivity
+  Test-NetConnection -ComputerName 192.168.1.100 -Port 8080
+  Test-NetConnection -ComputerName 192.168.1.100 -Port 3001
+  ```
+  
+  ```bash Using curl
+  # Test HTTP access
+  curl http://192.168.1.100:8080
+  curl http://192.168.1.100:3001/api/health
+  ```
+</CodeGroup>
+
+## Client Configuration
+
+### Accessing the Application
+
+Clients can access the system using:
+
+**Web Interface:**
+```
+http://192.168.1.100:8080
+```
+
+**API Endpoint (if exposed):**
+```
+http://192.168.1.100:3001/api
+```
+
+### Browser Requirements
+
+<Card title="Supported Browsers" icon="browser">
+  - **Google Chrome** 90+ (recommended)
+  - **Mozilla Firefox** 88+
+  - **Microsoft Edge** 90+
+  - **Safari** 14+ (macOS/iOS)
+  
+  **Requirements:**
+  - JavaScript enabled
+  - Cookies enabled
+  - LocalStorage enabled (for token persistence)
+</Card>
+
+### Bookmark Setup for Users
+
+Create bookmarks or desktop shortcuts for easy access:
+
+<CodeGroup>
+  ```html Chrome/Firefox Bookmark
+  Name: APTIV Scrap Control
+  URL: http://192.168.1.100:8080
+  ```
+  
+  ```powershell Windows Desktop Shortcut
+  # Create shortcut on desktop
+  $WshShell = New-Object -comObject WScript.Shell
+  $Shortcut = $WshShell.CreateShortcut("$Home\Desktop\APTIV Scrap Control.url")
+  $Shortcut.TargetPath = "http://192.168.1.100:8080"
+  $Shortcut.Save()
+  ```
+  
+  ```bash Linux Desktop Shortcut
+  # Create .desktop file
+  cat > ~/Desktop/aptiv-scrap.desktop <<EOF
+  [Desktop Entry]
+  Version=1.0
+  Type=Link
+  Name=APTIV Scrap Control
+  Icon=web-browser
+  URL=http://192.168.1.100:8080
+  EOF
+  
+  chmod +x ~/Desktop/aptiv-scrap.desktop
+  ```
+</CodeGroup>
+
+## DNS Configuration (Optional)
+
+### Local DNS with Hosts File
+
+Instead of using IP addresses, configure a friendly hostname:
+
+<Steps>
+  <Step title="Edit Hosts File on Each Client">
+    <CodeGroup>
+      ```bash Linux/Mac
+      sudo nano /etc/hosts
+      
+      # Add line:
+      192.168.1.100   aptiv-scrap.local
+      ```
+      
+      ```powershell Windows
+      # Run as Administrator
+      notepad C:\Windows\System32\drivers\etc\hosts
+      
+      # Add line:
+      192.168.1.100   aptiv-scrap.local
+      ```
+    </CodeGroup>
+  </Step>
+  
+  <Step title="Access with Hostname">
+    Users can now access via:
+    ```
+    http://aptiv-scrap.local:8080
+    ```
+  </Step>
+</Steps>
+
+### Router-Based DNS
+
+For organization-wide configuration, add a DNS entry in your router:
+
+1. Access router admin panel (typically `192.168.1.1`)
+2. Navigate to **DNS Settings** or **Local DNS**
+3. Add entry:
+   - **Hostname:** `aptiv-scrap`
+   - **IP Address:** `192.168.1.100`
+4. Save and apply
+
+Clients can now use: `http://aptiv-scrap:8080`
+
+## Network Troubleshooting
+
+### Cannot Access from Client
+
+<Steps>
+  <Step title="Verify Server is Running">
+    On the server:
+    ```bash
+    docker-compose ps
+    curl http://localhost:8080
+    ```
+  </Step>
+  
+  <Step title="Test Network Connectivity">
+    From client:
+    ```bash
+    # Ping server
+    ping 192.168.1.100
+    
+    # Test port
+    telnet 192.168.1.100 8080
+    ```
+  </Step>
+  
+  <Step title="Check Firewall Rules">
+    On server:
+    ```bash
+    # Linux
+    sudo ufw status
+    sudo iptables -L -n
+    
+    # Check listening ports
+    sudo netstat -tlnp | grep -E '8080|3001'
+    ```
+  </Step>
+  
+  <Step title="Verify Docker Port Bindings">
+    ```bash
+    docker ps --format "table {{.Names}}\t{{.Ports}}"
+    ```
+    
+    Should show:
+    ```
+    NAMES                PORTS
+    aptiv-scrap-web      0.0.0.0:8080->80/tcp
+    aptiv-scrap-api      0.0.0.0:3001->3001/tcp
+    ```
+  </Step>
+</Steps>
+
+### Slow Network Performance
+
+<Card title="Performance Optimization" icon="gauge-high">
+  **Check network bandwidth:**
+  ```bash
+  # Install iperf3
+  sudo apt-get install iperf3
+  
+  # On server:
+  iperf3 -s
+  
+  # On client:
+  iperf3 -c 192.168.1.100
+  ```
+  
+  **Nginx gzip is enabled** in the configuration to compress responses
+  
+  **Static assets are cached** for 1 year to reduce repeated downloads
+</Card>
+
+### Connection Timeout
+
+```bash
+# Increase Nginx timeout in nginx.conf
+location /api/ {
+    proxy_pass http://api:3001;
+    proxy_read_timeout 300s;
+    proxy_connect_timeout 300s;
+    proxy_send_timeout 300s;
+}
+```
+
+### CORS Errors
+
+If accessing from a different domain or port, ensure CORS is configured in the API:
+
+```javascript
+// API server should have:
+const cors = require('cors');
+app.use(cors({
+  origin: ['http://192.168.1.100:8080', 'http://aptiv-scrap.local:8080'],
+  credentials: true
+}));
+```
+
+## Advanced Network Configurations
+
+### Reverse Proxy with Custom Domain
+
+For accessing via a custom domain (e.g., `scrap.aptiv.com`):
+
+<Steps>
+  <Step title="Configure External DNS">
+    Point domain A record to server's public IP
+  </Step>
+  
+  <Step title="Set Up SSL with Let's Encrypt">
+    ```bash
+    # Install certbot
+    sudo apt-get install certbot python3-certbot-nginx
+    
+    # Obtain certificate
+    sudo certbot --nginx -d scrap.aptiv.com
+    ```
+  </Step>
+  
+  <Step title="Update Nginx Configuration">
+    ```nginx
+    server {
+        listen 443 ssl http2;
+        server_name scrap.aptiv.com;
+        
+        ssl_certificate /etc/letsencrypt/live/scrap.aptiv.com/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/scrap.aptiv.com/privkey.pem;
+        
+        # ... rest of configuration
+    }
+    
+    server {
+        listen 80;
+        server_name scrap.aptiv.com;
+        return 301 https://$server_name$request_uri;
+    }
+    ```
+  </Step>
+</Steps>
+
+### VPN Access for Remote Users
+
+For secure remote access:
+
+1. **Set up VPN server** (OpenVPN, WireGuard)
+2. **Configure VPN clients** with credentials
+3. **Route LAN traffic** through VPN tunnel
+4. **Access application** via VPN as if on local network
+
+### Load Balancing (Multiple Instances)
+
+For high availability, run multiple API instances:
+
+```nginx nginx.conf
+upstream api_backend {
+    least_conn;
+    server api1:3001;
+    server api2:3001;
+    server api3:3001;
+}
+
+location /api/ {
+    proxy_pass http://api_backend;
+}
+```
+
+## Security Best Practices
+
+<Steps>
+  <Step title="Use HTTPS in Production">
+    Always enable SSL/TLS for encrypted communication:
+    - Obtain SSL certificate (Let's Encrypt is free)
+    - Configure Nginx with SSL
+    - Redirect HTTP to HTTPS
+  </Step>
+  
+  <Step title="Implement Network Segmentation">
+    - Place database on private network segment
+    - Use firewall rules to restrict MySQL to API container only
+    - Isolate management interfaces (Adminer) from production network
+  </Step>
+  
+  <Step title="Regular Security Audits">
+    ```bash
+    # Scan for open ports
+    nmap 192.168.1.100
+    
+    # Check for vulnerable packages
+    docker scan aptiv-scrap-api
+    
+    # Review firewall logs
+    sudo tail -f /var/log/ufw.log
+    ```
+  </Step>
+  
+  <Step title="Rate Limiting">
+    Already configured in Nginx to prevent abuse:
+    ```nginx
+    limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10r/s;
+    
+    location /api/ {
+        limit_req zone=api_limit burst=20 nodelay;
+    }
+    ```
+  </Step>
+</Steps>
+
+## Network Documentation Template
+
+Maintain network documentation for your deployment:
+
+```markdown
+# APTIV Scrap Control - Network Configuration
+
+## Server Details
+- **Hostname:** aptiv-scrap-server
+- **IP Address:** 192.168.1.100
+- **Subnet Mask:** 255.255.255.0
+- **Gateway:** 192.168.1.1
+- **DNS:** 8.8.8.8, 8.8.4.4
+
+## Services
+- **Web (Nginx):** Port 8080
+- **API (Node.js):** Port 3001 (internal)
+- **Database (MySQL):** Port 3306 (internal)
+
+## Firewall Rules
+- Allow 8080/tcp from 192.168.1.0/24
+- Allow 22/tcp from admin subnet
+- Deny all others
+
+## Access URLs
+- **Production:** http://192.168.1.100:8080
+- **API Health:** http://192.168.1.100:3001/api/health
+
+## Backup Schedule
+- Daily database backups at 2:00 AM
+- Weekly full system backup on Sundays
+
+## Contacts
+- **IT Administrator:** admin@aptiv.com
+- **Network Engineer:** network@aptiv.com
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="User Management" icon="users" href="/user-management/roles-permissions">
+    Set up users, roles, and permissions
+  </Card>
+  
+  <Card title="Monitoring Setup" icon="chart-line" href="/features/dashboard">
+    Configure logging and health monitoring
+  </Card>
+  
+  <Card title="Backup Procedures" icon="database" href="/api/admin/backup">
+    Implement automated backup strategies
+  </Card>
+  
+  <Card title="Security Hardening" icon="shield" href="/guides/security">
+    Additional security measures
+  </Card>
+</CardGroup>

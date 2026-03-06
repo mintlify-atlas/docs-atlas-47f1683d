@@ -1,0 +1,163 @@
+---
+title: 'Areas Catalog'
+api: 'GET /api/catalogs/areas'
+description: 'Manage production areas catalog'
+---
+
+## Overview
+
+The Areas catalog stores information about production areas in the facility. Areas are used to categorize scrap records and generate area-specific reports.
+
+## Endpoints
+
+### List All Areas
+
+<CodeGroup>
+```bash GET - List All
+curl -X GET http://localhost:3001/api/catalogs/areas \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+```bash GET - Get by ID
+curl -X GET http://localhost:3001/api/catalogs/areas/1 \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+</CodeGroup>
+
+### Create Area
+
+<CodeGroup>
+```bash POST
+curl -X POST http://localhost:3001/api/catalogs/areas \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "AREA": "Ensamble Final",
+    "CADENA": "GNT1",
+    "TURNO": "A",
+    "TIPO": "Producción",
+    "NOMENCLATURA": "ENS-FIN",
+    "activo": 1
+  }'
+```
+
+```javascript JavaScript
+const createArea = async (data) => {
+  const response = await fetch('http://localhost:3001/api/catalogs/areas', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${getToken()}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(data)
+  });
+  return await response.json();
+};
+```
+</CodeGroup>
+
+### Update Area
+
+```bash
+curl -X PUT http://localhost:3001/api/catalogs/areas/1 \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"NOMENCLATURA": "ENS-FIN-V2"}'
+```
+
+### Delete Area (Soft)
+
+```bash
+curl -X DELETE http://localhost:3001/api/catalogs/areas/1 \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+## Data Structure
+
+<ResponseField name="id" type="number">
+  Unique identifier
+</ResponseField>
+
+<ResponseField name="AREA" type="string" required>
+  Area name (e.g., "Ensamble", "Moldeo", "Inspección")
+</ResponseField>
+
+<ResponseField name="CADENA" type="string">
+  Associated production chain
+</ResponseField>
+
+<ResponseField name="TURNO" type="string">
+  Default shift for this area
+</ResponseField>
+
+<ResponseField name="TIPO" type="string">
+  Area type (e.g., "Producción", "Calidad", "Almacén")
+</ResponseField>
+
+<ResponseField name="NOMENCLATURA" type="string">
+  Short code or abbreviation for the area
+</ResponseField>
+
+<ResponseField name="activo" type="number">
+  Status: 1 = active, 0 = inactive
+</ResponseField>
+
+## Response Example
+
+```json
+[
+  {
+    "id": 1,
+    "AREA": "Ensamble Final",
+    "CADENA": "GNT1",
+    "TURNO": "A",
+    "TIPO": "Producción",
+    "NOMENCLATURA": "ENS-FIN",
+    "activo": 1
+  },
+  {
+    "id": 2,
+    "AREA": "Moldeo",
+    "CADENA": "GNT1",
+    "TURNO": "B",
+    "TIPO": "Producción",
+    "NOMENCLATURA": "MOLD",
+    "activo": 1
+  }
+]
+```
+
+## TypeScript Interface
+
+```typescript
+export interface Area {
+  id: number;
+  AREA: string;
+  CADENA: string;
+  TURNO: string;
+  TIPO: string;
+  NOMENCLATURA: string;
+  activo: number;
+}
+```
+
+## Permissions
+
+<CardGroup cols={2}>
+  <Card title="View" icon="eye">
+    All authenticated users
+  </Card>
+  <Card title="Create/Edit" icon="pencil">
+    `admin`, `calidad` roles only
+  </Card>
+</CardGroup>
+
+## Audit Log
+
+All create, update, and delete operations are logged in the `auditoria` table.
+
+## Related Endpoints
+
+- [Chains Catalog](/api/catalogs/chains) - Production chains
+- [Lines Catalog](/api/catalogs/lines) - Production lines
+- [Shifts Catalog](/api/catalogs/shifts) - Shift configuration

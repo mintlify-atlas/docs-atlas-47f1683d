@@ -1,0 +1,430 @@
+---
+title: 'Catalog Management'
+description: 'Configure all system catalogs including areas, parts, defects, categories, and units'
+icon: 'book'
+---
+
+Catalogs are the foundation of APTIV Scrap Control. They define all master data used throughout the system for scrap registration and reporting.
+
+## Catalog Types
+
+The system manages 8 core catalog types organized into 3 groups:
+
+<CardGroup cols={3}>
+  <Card title="Production" icon="industry">
+    - Areas
+    - Production Chains
+    - Shifts
+  </Card>
+  <Card title="Scrap" icon="trash">
+    - Part Numbers
+    - Defect Reasons
+    - Categories
+    - Units
+  </Card>
+  <Card title="System" icon="cog">
+    - Roles
+  </Card>
+</CardGroup>
+
+## Areas Catalog
+
+Defines production areas where scrap is generated.
+
+### TypeScript Interface
+
+```typescript types.ts
+export interface Area {
+  id: number;
+  AREA: string;              // Area name
+  CADENA: string;            // Production chain
+  TURNO: string;             // Default shift
+  TIPO: string;              // Type (Producción, Calidad)
+  NOMENCLATURA: string;      // Area code (ARN, CON, CAB)
+  activo: number;            // 1=active, 0=inactive
+}
+```
+
+### Database Schema
+
+```sql schema.sql
+CREATE TABLE IF NOT EXISTS areas (
+  id int DEFAULT NULL,
+  AREA varchar(50) DEFAULT NULL,
+  CADENA varchar(50) DEFAULT NULL,
+  TURNO varchar(10) DEFAULT NULL,
+  TIPO varchar(50) DEFAULT NULL,
+  NOMENCLATURA varchar(50) DEFAULT NULL,
+  activo TINYINT DEFAULT 1
+);
+```
+
+### Sample Data
+
+| Area | Chain | Shift | Type | Code |
+|------|-------|-------|------|------|
+| Arneses | Cadena 1 | 1 | Producción | ARN |
+| Conectores | Cadena 2 | 1 | Producción | CON |
+| Cable | Cadena 1 | 2 | Producción | CAB |
+| Ensamble | Cadena 3 | 1 | Producción | ENS |
+| Moldeo | Cadena 2 | 2 | Producción | MOL |
+| Pruebas | Cadena 3 | 1 | Calidad | PRU |
+
+<Note>
+The **NOMENCLATURA** field is used for barcode generation and quick identification of scrap sources.
+</Note>
+
+---
+
+## Part Numbers Catalog (CatNP)
+
+Defines all parts that can generate scrap with their material, weight, and cost.
+
+### TypeScript Interface
+
+```typescript types.ts
+export interface CatNP {
+  ID: number;
+  NP: string;                // Part number
+  MATERIAL: string;          // Material type
+  PESO: number;              // Weight per piece (kg)
+  COSTO: number;             // Cost per piece (USD)
+  TIPO?: string;             // Part type (Arnés, Conector, Cable)
+  DESCRIPCION?: string;      // Description
+  activo: number;            // 1=active, 0=inactive
+}
+```
+
+### Database Schema
+
+```sql schema.sql
+CREATE TABLE IF NOT EXISTS catnp (
+  ID int NOT NULL AUTO_INCREMENT,
+  NP varchar(30) NOT NULL DEFAULT '',
+  MATERIAL varchar(30) DEFAULT NULL,
+  PESO double(10,4) DEFAULT NULL,
+  COSTO double(10,4) DEFAULT NULL,
+  TIPO varchar(50) DEFAULT NULL,
+  DESCRIPCION varchar(100) DEFAULT NULL,
+  activo TINYINT DEFAULT 1,
+  PRIMARY KEY (ID)
+);
+```
+
+### Sample Data
+
+```typescript seed.ts
+[
+  { 
+    ID: 1, 
+    NP: 'NP-001-ARN', 
+    MATERIAL: 'Cobre', 
+    PESO: 0.125, 
+    COSTO: 2.50, 
+    TIPO: 'Arnés', 
+    DESCRIPCION: 'Arnés principal motor' 
+  },
+  { 
+    ID: 2, 
+    NP: 'NP-002-CON', 
+    MATERIAL: 'Plástico ABS', 
+    PESO: 0.045, 
+    COSTO: 1.80, 
+    TIPO: 'Conector', 
+    DESCRIPCION: 'Conector 12 pines' 
+  },
+  { 
+    ID: 3, 
+    NP: 'NP-003-CAB', 
+    MATERIAL: 'Cobre/PVC', 
+    PESO: 0.200, 
+    COSTO: 3.25, 
+    TIPO: 'Cable', 
+    DESCRIPCION: 'Cable alimentación 14AWG' 
+  }
+]
+```
+
+<Note>
+When registering scrap, **PESO** and **COSTO** are automatically multiplied by the quantity entered to calculate total weight and cost.
+</Note>
+
+---
+
+## Defect Reasons Catalog (Fallas)
+
+Defines all possible defect reasons that cause scrap generation.
+
+### TypeScript Interface
+
+```typescript types.ts
+export interface Falla {
+  ID: number;
+  FALLA: string;             // Defect description
+  AREA: string;              // Associated area
+  FALLA_BARRA: string;       // Barcode identifier
+  CATEGORIA?: string;        // Category (Proceso, Material, Calidad)
+  activo: number;            // 1=active, 0=inactive
+}
+```
+
+### Database Schema
+
+```sql schema.sql
+CREATE TABLE IF NOT EXISTS fallas (
+  ID int NOT NULL AUTO_INCREMENT,
+  FALLA varchar(100) DEFAULT NULL,
+  AREA varchar(100) DEFAULT NULL,
+  FALLA_BARRA varchar(200) DEFAULT NULL,
+  CATEGORIA varchar(50) DEFAULT NULL,
+  activo TINYINT DEFAULT 1,
+  PRIMARY KEY (ID)
+);
+```
+
+### Sample Data
+
+| Defect | Area | Barcode | Category |
+|--------|------|---------|----------|
+| Corte incorrecto | Corte | F-001-COR | Proceso |
+| Soldadura fría | Soldadura | F-002-SOL | Proceso |
+| Conector dañado | Conectores | F-003-CON | Material |
+| Aislamiento roto | Cable | F-004-CAB | Material |
+| Prueba eléctrica fallida | Pruebas | F-006-PRU | Calidad |
+| Terminal mal crimpada | Arneses | F-009-ARN | Proceso |
+| Daño por manejo | General | F-011-GEN | Manejo |
+| Falla de máquina | General | F-012-GEN | Equipo |
+
+<Note>
+The **FALLA_BARRA** field is used for barcode scanner integration to quickly select defect reasons during scrap registration.
+</Note>
+
+---
+
+## Scrap Categories Catalog
+
+Classifies scrap by root cause type.
+
+### TypeScript Interface
+
+```typescript types.ts
+export interface CategoriaScrap {
+  id: number;
+  nombre: string;            // Category name
+  activo: number;            // 1=active, 0=inactive
+}
+```
+
+### Database Schema
+
+```sql schema.sql
+CREATE TABLE IF NOT EXISTS categorias_scrap (
+  id int AUTO_INCREMENT PRIMARY KEY,
+  nombre varchar(100) NOT NULL,
+  activo TINYINT DEFAULT 1
+);
+```
+
+### Standard Categories
+
+<Steps>
+  <Step title="Proceso">
+    Scrap caused by process issues (incorrect cutting, bad soldering, assembly errors)
+  </Step>
+  <Step title="Material">
+    Scrap caused by defective raw materials (damaged connectors, broken insulation)
+  </Step>
+  <Step title="Calidad">
+    Scrap identified during quality testing (electrical test failures)
+  </Step>
+  <Step title="Manejo">
+    Scrap caused by handling damage during production or transportation
+  </Step>
+  <Step title="Equipo">
+    Scrap caused by equipment malfunction or failure
+  </Step>
+  <Step title="Setup">
+    Scrap generated during machine setup and configuration
+  </Step>
+</Steps>
+
+---
+
+## Units of Measure Catalog
+
+Defines measurement units for scrap quantity.
+
+### TypeScript Interface
+
+```typescript types.ts
+export interface Unidad {
+  id: number;
+  nombre: string;            // Unit name
+  simbolo: string;           // Unit symbol
+  activo: number;            // 1=active, 0=inactive
+}
+```
+
+### Database Schema
+
+```sql schema.sql
+CREATE TABLE IF NOT EXISTS unidades (
+  id int AUTO_INCREMENT PRIMARY KEY,
+  nombre varchar(50) NOT NULL,
+  simbolo varchar(10) NOT NULL,
+  activo TINYINT DEFAULT 1
+);
+```
+
+### Standard Units
+
+| Unit | Symbol | Usage |
+|------|--------|-------|
+| Piezas | pzas | Count of discrete parts |
+| Kilogramos | kg | Weight-based scrap |
+| Metros | m | Linear materials (cable, wire) |
+| Gramos | g | Small component weight |
+
+---
+
+## Managing Catalogs
+
+### Access Requirements
+
+<Note>
+The **manage_catalogs** permission is required to add, edit, or deactivate catalog entries. This is typically granted to:
+- Administrators
+- Quality engineers
+</Note>
+
+### Using the Catalog Interface
+
+<Steps>
+  <Step title="Navigate to Catalogs">
+    From the main menu, select **Catálogos** to open the catalog management interface.
+  </Step>
+  <Step title="Select Catalog Type">
+    Use the sidebar to choose which catalog to manage (Areas, Part Numbers, Defects, etc.)
+  </Step>
+  <Step title="Add New Entry">
+    Click the **+ Agregar** button to create a new catalog entry. Fill in all required fields.
+  </Step>
+  <Step title="Edit Existing Entry">
+    Click the edit icon (pencil) next to any entry to modify its details.
+  </Step>
+  <Step title="Toggle Active Status">
+    Use the toggle switch to activate or deactivate entries without deleting them.
+  </Step>
+</Steps>
+
+### Import/Export Functionality
+
+<Accordion title="Importing Catalogs from CSV">
+  Users with **import_catalogs** permission can bulk import catalog data:
+  
+  1. Click the **Importar** button
+  2. Select a CSV file with matching column headers
+  3. The system will parse and add all valid rows
+  4. A confirmation message shows the number of imported records
+
+  **CSV Format Example (catnp):**
+  ```csv
+  NP,MATERIAL,PESO,COSTO,TIPO,DESCRIPCION,activo
+  NP-001-ARN,Cobre,0.125,2.50,Arnés,Arnés principal motor,1
+  NP-002-CON,Plástico ABS,0.045,1.80,Conector,Conector 12 pines,1
+  ```
+</Accordion>
+
+<Accordion title="Exporting Catalogs to CSV">
+  Users with **export_catalogs** permission can export catalog data:
+  
+  1. Navigate to the catalog you want to export
+  2. Click the **Exportar** button
+  3. A CSV file will download automatically
+  4. The file includes all columns and active/inactive entries
+</Accordion>
+
+---
+
+## Catalog UI Components
+
+The catalog management interface is implemented in `Catalogs.tsx` and provides:
+
+### Features
+
+- **Grouped Navigation**: Catalogs organized by Production, Scrap, and System groups
+- **Live Record Count**: Shows number of entries per catalog in the sidebar
+- **Inline Editing**: Modal-based form for adding and editing entries
+- **Active/Inactive Toggle**: Quick status changes without full edit
+- **Import/Export**: CSV-based bulk operations
+- **Permission-Based Access**: UI elements respect user permissions
+
+### Field Definitions
+
+```typescript Catalogs.tsx
+const fieldsMap: Record<CatalogTab, { key: string; label: string; type?: string }[]> = {
+  areas: [
+    { key: 'AREA', label: 'Área' }, 
+    { key: 'CADENA', label: 'Cadena' }, 
+    { key: 'TURNO', label: 'Turno' }, 
+    { key: 'TIPO', label: 'Tipo' }, 
+    { key: 'NOMENCLATURA', label: 'Nomenclatura' }
+  ],
+  catnp: [
+    { key: 'NP', label: 'No. Parte' }, 
+    { key: 'MATERIAL', label: 'Material' }, 
+    { key: 'PESO', label: 'Peso', type: 'number' }, 
+    { key: 'COSTO', label: 'Costo', type: 'number' }, 
+    { key: 'TIPO', label: 'Tipo' }, 
+    { key: 'DESCRIPCION', label: 'Descripción' }
+  ],
+  fallas: [
+    { key: 'FALLA', label: 'Falla' }, 
+    { key: 'AREA', label: 'Área' }, 
+    { key: 'FALLA_BARRA', label: 'Código Barra' }, 
+    { key: 'CATEGORIA', label: 'Categoría' }
+  ],
+  categorias: [{ key: 'nombre', label: 'Nombre' }],
+  unidades: [
+    { key: 'nombre', label: 'Nombre' }, 
+    { key: 'simbolo', label: 'Símbolo' }
+  ]
+};
+```
+
+---
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use Clear Nomenclature" icon="tag">
+    Establish a consistent naming convention for codes (ARN for Arneses, CON for Conectores) to ensure barcode readability and quick identification.
+  </Card>
+  <Card title="Keep Catalogs Updated" icon="rotate">
+    Regularly review and deactivate obsolete parts or defects rather than deleting them to preserve historical data integrity.
+  </Card>
+  <Card title="Link Defects to Areas" icon="link">
+    Associate each defect with the correct area to enable accurate area-specific reporting and root cause analysis.
+  </Card>
+  <Card title="Validate Import Data" icon="check">
+    When importing CSV files, verify data accuracy before import to prevent incorrect calculations in scrap records.
+  </Card>
+</CardGroup>
+
+---
+
+## API Integration
+
+Catalog data is accessible via REST API endpoints:
+
+| Catalog | GET Endpoint | POST Endpoint | PUT Endpoint |
+|---------|--------------|---------------|---------------|
+| Areas | `/api/catalogs/areas` | `/api/catalogs/areas` | `/api/catalogs/areas/:id` |
+| Part Numbers | `/api/catalogs/catnp` | `/api/catalogs/catnp` | `/api/catalogs/catnp/:id` |
+| Defects | `/api/catalogs/fallas` | `/api/catalogs/fallas` | `/api/catalogs/fallas/:id` |
+| Categories | `/api/catalogs/categorias` | `/api/catalogs/categorias` | `/api/catalogs/categorias/:id` |
+| Units | `/api/catalogs/unidades` | `/api/catalogs/unidades` | `/api/catalogs/unidades/:id` |
+
+<Note>
+All API endpoints require authentication via JWT token. See the [API Reference](/api-reference/authentication) for details.
+</Note>

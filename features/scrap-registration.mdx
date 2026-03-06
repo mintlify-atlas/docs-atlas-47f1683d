@@ -1,0 +1,395 @@
+---
+title: Scrap Registration
+description: Register scrap records with barcode scanning, auto-calculations, and duplicate detection
+icon: 'clipboard'
+---
+
+The Scrap Registration module is the core feature of APTIV Scrap Control. It allows operators to quickly register scrap parts using barcode scanners or manual entry, with automatic cost calculations and intelligent duplicate detection.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Barcode Scanner Support" icon="barcode">
+    Automatic detection of USB barcode scanners with sub-50ms keystroke detection
+  </Card>
+  <Card title="Auto-Calculations" icon="calculator">
+    Automatic calculation of total weight and total cost based on quantity
+  </Card>
+  <Card title="Duplicate Detection" icon="shield-check">
+    Prevents duplicate entries within 30 seconds to avoid accidental re-submissions
+  </Card>
+  <Card title="Smart Shift Detection" icon="clock">
+    Automatically detects current shift based on system time
+  </Card>
+</CardGroup>
+
+## Registration Workflow
+
+<Steps>
+  <Step title="Scan or Search Part Number">
+    Use a USB barcode scanner or type the part number manually. The system searches the `catnp` catalog and auto-fills:
+    - Material name
+    - Unit weight (kg)
+    - Unit cost (USD)
+    - Part type
+
+    ```tsx
+    // Auto-detection logic from RegisterScrap.tsx:88
+    if (scanBuffer.current.length >= 3) {
+      buscarNP(scanBuffer.current.trim());
+      scanBuffer.current = '';
+    }
+    ```
+
+    <Note>
+      The scanner must be configured to send Enter (CR) after each scan and operate in HID keyboard mode.
+    </Note>
+  </Step>
+
+  <Step title="Select Location">
+    Choose the production area, line chain, and shift:
+    - **Area**: Auto-populates the associated chain
+    - **Chain**: Optional, can be changed manually
+    - **Shift**: Auto-detected based on current time
+
+    ```tsx
+    // Shift detection logic from RegisterScrap.tsx:47-69
+    const detectTurno = () => {
+      const hour = new Date().getHours();
+      const activeTurnos = (turnos || []).filter((t: Turno) => t.activo === 1);
+      for (const t of activeTurnos) {
+        if (t.hora_inicio < t.hora_fin) {
+          if (hour >= t.hora_inicio && hour < t.hora_fin) {
+            setTurno(t.codigo || t.nombre);
+            return;
+          }
+        }
+      }
+    };
+    ```
+  </Step>
+
+  <Step title="Enter Quantity and Unit">
+    Specify the scrap quantity and measurement unit:
+    - Use quick-add buttons: +1, +5, +10, +25, +50, +100
+    - Select unit: pieces (pzas), kilograms (kg), meters (m), grams (g)
+    - View real-time calculations:
+      - **Total Weight** = Unit Weight × Quantity
+      - **Total Cost** = Unit Cost × Quantity
+
+    ```tsx
+    // Calculation logic from RegisterScrap.tsx:42-44
+    const pesoTotal = +(pesoUnitario * cantidad).toFixed(4);
+    const costoTotal = +(costoUnitario * cantidad).toFixed(2);
+    ```
+  </Step>
+
+  <Step title="Add Classification">
+    Optionally classify the scrap:
+    - **Category**: e.g., Material, Process, Quality
+    - **Failure Mode**: Select from active failure reasons
+    - **Comments**: Add additional observations
+  </Step>
+
+  <Step title="Submit Registration">
+    Click "Registrar Scrap" to save. The system:
+    1. Validates required fields (Area, Shift, Part Number, Quantity > 0)
+    2. Checks for duplicates within the last 30 seconds
+    3. Saves to database with timestamp and user ID
+    4. Shows success confirmation
+
+    ```tsx
+    // Duplicate detection from RegisterScrap.tsx:208-221
+    const now = new Date();
+    const thirtySecsAgo = new Date(now.getTime() - 30000);
+    const duplicate = (state.pesajes || []).find(p =>
+      p.ELIMINADO !== 1 &&
+      p.NP === np &&
+      p.AREA === area &&
+      p.TOTAL_PZAS === String(cantidad) &&
+      new Date(p.FECHA_REGISTRO) > thirtySecsAgo
+    );
+
+    if (duplicate) {
+      setError('⚠️ Se detectó un registro duplicado...');
+      return;
+    }
+    ```
+  </Step>
+</Steps>
+
+## Barcode Scanner Integration
+
+The system supports USB barcode scanners with automatic detection.
+
+### Scanner Configuration
+
+<Tabs>
+  <Tab title="Hardware Setup">
+    1. Connect USB barcode scanner to the workstation
+    2. No drivers required (uses HID keyboard emulation)
+    3. Scanner must be in **Keyboard Wedge** mode
+  </Tab>
+  
+  <Tab title="Scanner Settings">
+    Configure the scanner to:
+    - Add **Carriage Return (CR)** suffix after each scan
+    - Use **Code 128**, **Code 39**, or **EAN/UPC** format
+    - Minimum read length: 3 characters
+    - Scan speed: Standard (not aggressive)
+  </Tab>
+  
+  <Tab title="Testing">
+    Test the scanner:
+    1. Click on the part number input field
+    2. Scan a barcode
+    3. The system should:
+       - Show green "✓ Parte encontrada" indicator
+       - Auto-fill material, weight, and cost
+       - Display part details in green box
+
+    <Warning>
+      If "✗ No encontrada" appears, the part number is not in the catalog. Add it via the **Catalog Management** module.
+    </Warning>
+  </Tab>
+</Tabs>
+
+### Detection Logic
+
+The scanner detection uses keystroke timing analysis:
+
+```tsx
+// From RegisterScrap.tsx:75-114
+const handleKeyDown = (e: KeyboardEvent) => {
+  const now = Date.now();
+  const timeDiff = now - lastScanTime;
+  setLastScanTime(now);
+
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    if (scanBuffer.current.length >= 3) {
+      buscarNP(scanBuffer.current.trim());
+      scanBuffer.current = '';
+    }
+    return;
+  }
+
+  if (e.key.length === 1) {
+    // Scanner input: < 80ms between keys
+    if (timeDiff < 80 || scanBuffer.current.length === 0) {
+      scanBuffer.current += e.key;
+    } else {
+      scanBuffer.current = e.key;
+    }
+
+    if (scanTimeout.current) clearTimeout(scanTimeout.current);
+    scanTimeout.current = setTimeout(() => {
+      if (scanBuffer.current.length >= 5) {
+        buscarNP(scanBuffer.current.trim());
+      }
+      scanBuffer.current = '';
+    }, 150);
+  }
+};
+```
+
+**Key Points:**
+- Keystroke interval < 80ms indicates scanner input
+- Manual typing has > 80ms intervals
+- Auto-triggers search after 150ms of inactivity
+- Minimum 3 characters required for search
+
+## Data Structure
+
+Each scrap registration creates a `Pesaje` record:
+
+```typescript
+// From types.ts:45-69
+export interface Pesaje {
+  ID: number;
+  AREA: string;              // Production area
+  NP: string;                // Part number
+  MATERIAL: string;          // Material name
+  PESO: number;              // Total weight (kg)
+  COSTO: number;             // Total cost (USD)
+  CADENA: string;            // Production chain
+  TURNO: string;             // Shift code
+  TIPO: string;              // Part type
+  SUPERVISOR: string;        // Supervisor name
+  FECHA_REGISTRO: string;    // ISO timestamp
+  TOTAL_PZAS: string;        // Quantity
+  MODO_FALLA: string;        // Failure mode
+  USUARIO_ID?: number;       // User who registered
+  COMENTARIOS?: string;      // Optional comments
+  FOTO?: string;             // Optional photo URL
+  ELIMINADO?: number;        // Soft delete flag (0/1)
+  CATEGORIA?: string;        // Scrap category
+  UNIDAD?: string;           // Measurement unit
+  CADENA_ID?: number;
+  LINEA_ID?: number;
+  LINEA?: string;
+  UPDATED_AT?: string;
+}
+```
+
+## Form Validation
+
+The system validates:
+
+<CardGroup cols={2}>
+  <Card title="Required Fields" icon="asterisk">
+    - Area
+    - Shift
+    - Part Number
+    - Quantity > 0
+  </Card>
+  <Card title="Business Rules" icon="ruler">
+    - No duplicate within 30 seconds
+    - Part must exist in catalog
+    - Area must be active
+    - User must have `register_scrap` permission
+  </Card>
+</CardGroup>
+
+## Quick Actions
+
+### Quick Add Buttons
+
+Speed up quantity entry with preset increment buttons:
+
+```tsx
+// From RegisterScrap.tsx:603-634
+{[1, 5, 10, 25, 50, 100].map(n => (
+  <button
+    key={n}
+    type="button"
+    onClick={() => quickAdd(n)}
+  >
+    +{n}
+  </button>
+))}
+```
+
+### Smart Form Reset
+
+The form resets automatically after successful submission but preserves:
+- Selected area
+- Selected shift
+- Supervisor name
+
+This allows rapid consecutive registrations without re-entering location data.
+
+## Success & Error Handling
+
+<Tabs>
+  <Tab title="Success">
+    On successful registration:
+    - Green confirmation banner appears for 3 seconds
+    - Form clears (except area/shift/supervisor)
+    - Total records counter increments
+    - Record immediately appears in dashboard
+
+    ```tsx
+    // From RegisterScrap.tsx:252-254
+    setSuccess(true);
+    resetForm();
+    setTimeout(() => setSuccess(false), 3000);
+    ```
+  </Tab>
+  
+  <Tab title="Validation Errors">
+    Shows red error banner with specific missing fields:
+    ```
+    ⚠️ Campos requeridos faltantes: Área, Turno
+    ```
+  </Tab>
+  
+  <Tab title="Duplicate Detection">
+    Prevents accidental double-entry:
+    ```
+    ⚠️ Se detectó un registro duplicado en los últimos 30 segundos.
+    Espera un momento o cambia los datos.
+    ```
+  </Tab>
+  
+  <Tab title="Part Not Found">
+    When scanner reads unknown barcode:
+    - Red "✗ No encontrada" indicator
+    - Manual entry still allowed
+    - Suggests adding part to catalog
+  </Tab>
+</Tabs>
+
+## Permissions
+
+All authenticated users with `register_scrap` permission can access this module. Default roles:
+
+- ✅ **Operator** — Can register scrap
+- ✅ **Supervisor** — Can register scrap
+- ✅ **Quality** — Can register scrap
+- ✅ **Admin** — Full access
+
+## Best Practices
+
+<Note>
+  **For Operators:**
+  - Scan parts immediately when scrapped
+  - Double-check quantity before submitting
+  - Add comments for unusual cases
+  - Report scanner issues to supervisor
+
+  **For Supervisors:**
+  - Review daily totals at shift end
+  - Verify failure mode classifications
+  - Update part catalog when new parts arrive
+  - Train operators on proper scanning technique
+</Note>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Scanner not detecting">
+    1. Check USB connection
+    2. Verify scanner is in HID keyboard mode
+    3. Click "Scanner activo" toggle to re-enable
+    4. Test by scanning into a text editor first
+    5. Ensure scanner sends CR suffix
+  </Accordion>
+  
+  <Accordion title="Part not auto-filling">
+    1. Verify part exists in Catalog → Part Numbers
+    2. Check part is marked as active (`activo = 1`)
+    3. Ensure exact match (case-insensitive)
+    4. Add missing parts via admin panel
+  </Accordion>
+  
+  <Accordion title="Cannot submit form">
+    1. Check all required fields are filled
+    2. Ensure quantity > 0
+    3. Wait 30 seconds if duplicate warning appears
+    4. Verify you have `register_scrap` permission
+    5. Check internet connection (if using API mode)
+  </Accordion>
+  
+  <Accordion title="Calculations seem wrong">
+    Unit cost and weight come from the `catnp` catalog:
+    - Total Weight = Unit Weight × Quantity
+    - Total Cost = Unit Cost × Quantity
+    
+    If incorrect, update the catalog entry.
+  </Accordion>
+</AccordionGroup>
+
+## Related Pages
+
+<CardGroup cols={3}>
+  <Card title="Dashboard" icon="chart-line" href="/features/dashboard">
+    View aggregated scrap metrics and charts
+  </Card>
+  <Card title="Reports" icon="file-chart-column" href="/features/reports">
+    Generate detailed reports with filters
+  </Card>
+  <Card title="Catalog Management" icon="database" href="/configuration/catalogs">
+    Manage part numbers, areas, and failure modes
+  </Card>
+</CardGroup>

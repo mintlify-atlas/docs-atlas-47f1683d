@@ -1,0 +1,391 @@
+---
+title: 'Audit Log'
+api: 'GET /api/audit'
+description: 'View system audit trail and user actions'
+---
+
+## Overview
+
+Retrieve audit log entries showing all system actions including creates, updates, and deletes. The audit log provides a complete history of data changes.
+
+<Note>
+  All CUD (Create, Update, Delete) operations are automatically logged with user ID, timestamp, and change details.
+</Note>
+
+## Authentication
+
+Requires valid JWT token. Viewing audit logs requires `admin` or `calidad` role.
+
+```
+Authorization: Bearer <token>
+```
+
+## Query Parameters
+
+<ParamField query="fecha_inicio" type="string">
+  Start date filter (YYYY-MM-DD format)
+</ParamField>
+
+<ParamField query="fecha_fin" type="string">
+  End date filter (YYYY-MM-DD format)
+</ParamField>
+
+<ParamField query="usuario_id" type="number">
+  Filter by user ID
+</ParamField>
+
+<ParamField query="accion" type="string">
+  Filter by action type: `crear`, `editar`, `eliminar`, `exportar`, `importar`
+</ParamField>
+
+<ParamField query="entidad" type="string">
+  Filter by entity/table name (e.g., `pesaje`, `usuarios`, `areas`)
+</ParamField>
+
+<ParamField query="limit" type="number" default={1000}>
+  Maximum number of records to return
+</ParamField>
+
+## Request Example
+
+<CodeGroup>
+```bash cURL - Recent Activity
+curl -X GET "http://localhost:3001/api/audit?limit=100" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+```bash cURL - User Activity
+curl -X GET "http://localhost:3001/api/audit?usuario_id=5&fecha_inicio=2024-03-01" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+```bash cURL - Delete Actions
+curl -X GET "http://localhost:3001/api/audit?accion=eliminar" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+```javascript JavaScript
+const getAuditLog = async (filters = {}) => {
+  const params = new URLSearchParams(
+    Object.entries(filters)
+      .filter(([_, v]) => v !== undefined)
+      .map(([k, v]) => [k, String(v)])
+  );
+  
+  const response = await fetch(
+    `http://localhost:3001/api/audit?${params}`,
+    {
+      headers: { 'Authorization': `Bearer ${getToken()}` }
+    }
+  );
+  
+  return await response.json();
+};
+
+// Recent activity
+const recent = await getAuditLog({ limit: 50 });
+
+// User's actions today
+const userToday = await getAuditLog({
+  usuario_id: 5,
+  fecha_inicio: new Date().toISOString().split('T')[0]
+});
+
+// All deletes this month
+const deletes = await getAuditLog({
+  accion: 'eliminar',
+  fecha_inicio: '2024-03-01'
+});
+```
+
+```typescript TypeScript
+import { AuditEntry } from './types';
+
+interface AuditFilters {
+  fecha_inicio?: string;
+  fecha_fin?: string;
+  usuario_id?: number;
+  accion?: 'crear' | 'editar' | 'eliminar' | 'exportar' | 'importar';
+  entidad?: string;
+  limit?: number;
+}
+
+const getAuditLog = async (filters: AuditFilters = {}): Promise<AuditEntry[]> => {
+  const params = new URLSearchParams();
+  
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined) {
+      params.append(key, String(value));
+    }
+  });
+  
+  const response = await fetch(
+    `http://localhost:3001/api/audit?${params}`,
+    {
+      headers: { 'Authorization': `Bearer ${getToken()}` }
+    }
+  );
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch audit log');
+  }
+  
+  return await response.json();
+};
+```
+</CodeGroup>
+
+## Response
+
+<ResponseField name="id" type="number">
+  Unique audit entry ID
+</ResponseField>
+
+<ResponseField name="accion" type="string">
+  Action performed: `crear`, `editar`, `eliminar`, `exportar`, `importar`
+</ResponseField>
+
+<ResponseField name="entidad" type="string">
+  Entity/table affected (e.g., `pesaje`, `usuarios`, `areas`)
+</ResponseField>
+
+<ResponseField name="entidad_id" type="string">
+  ID of the affected record
+</ResponseField>
+
+<ResponseField name="usuario_id" type="number">
+  ID of user who performed the action
+</ResponseField>
+
+<ResponseField name="usuario_nombre" type="string">
+  User's first name (from JOIN)
+</ResponseField>
+
+<ResponseField name="usuario_apellido" type="string">
+  User's last name (from JOIN)
+</ResponseField>
+
+<ResponseField name="cambios" type="string">
+  JSON string containing the changes made
+</ResponseField>
+
+<ResponseField name="fecha" type="string">
+  Timestamp when action occurred
+</ResponseField>
+
+### Success Response Example
+
+```json
+[
+  {
+    "id": 1523,
+    "accion": "crear",
+    "entidad": "pesaje",
+    "entidad_id": "1234",
+    "usuario_id": 5,
+    "usuario_nombre": "Carlos",
+    "usuario_apellido": "Ramírez",
+    "cambios": "{\"AREA\":\"Ensamble\",\"NP\":\"12345678\",\"COSTO\":45.75}",
+    "fecha": "2024-03-15T14:30:25.000Z"
+  },
+  {
+    "id": 1522,
+    "accion": "editar",
+    "entidad": "usuarios",
+    "entidad_id": "8",
+    "usuario_id": 1,
+    "usuario_nombre": "Juan",
+    "usuario_apellido": "Pérez",
+    "cambios": "{\"area\":\"Moldeo\",\"turno\":\"B\"}",
+    "fecha": "2024-03-15T14:15:10.000Z"
+  },
+  {
+    "id": 1521,
+    "accion": "eliminar",
+    "entidad": "pesaje",
+    "entidad_id": "1230",
+    "usuario_id": 2,
+    "usuario_nombre": "María",
+    "usuario_apellido": "García",
+    "cambios": "{\"ELIMINADO\":1}",
+    "fecha": "2024-03-15T13:45:00.000Z"
+  }
+]
+```
+
+## Audit Log Viewer
+
+```typescript
+const AuditLogViewer: React.FC = () => {
+  const [entries, setEntries] = useState<AuditEntry[]>([]);
+  const [filters, setFilters] = useState<AuditFilters>({
+    limit: 100
+  });
+  
+  useEffect(() => {
+    getAuditLog(filters).then(setEntries);
+  }, [filters]);
+  
+  const getActionIcon = (accion: string) => {
+    switch (accion) {
+      case 'crear': return '➕';
+      case 'editar': return '✏️';
+      case 'eliminar': return '🗑️';
+      case 'exportar': return '📤';
+      case 'importar': return '📥';
+      default: return 'ℹ️';
+    }
+  };
+  
+  const formatChanges = (cambios: string) => {
+    try {
+      const parsed = JSON.parse(cambios);
+      return Object.entries(parsed)
+        .map(([key, value]) => `${key}: ${value}`)
+        .join(', ');
+    } catch {
+      return cambios;
+    }
+  };
+  
+  return (
+    <div>
+      <h2>Audit Log</h2>
+      
+      {/* Filters */}
+      <div className="filters">
+        <input
+          type="date"
+          onChange={e => setFilters({ ...filters, fecha_inicio: e.target.value })}
+        />
+        <select onChange={e => setFilters({ ...filters, accion: e.target.value as any })}>
+          <option value="">All Actions</option>
+          <option value="crear">Create</option>
+          <option value="editar">Edit</option>
+          <option value="eliminar">Delete</option>
+        </select>
+      </div>
+      
+      {/* Log Table */}
+      <table>
+        <thead>
+          <tr>
+            <th>Date/Time</th>
+            <th>Action</th>
+            <th>Entity</th>
+            <th>User</th>
+            <th>Changes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {entries.map(entry => (
+            <tr key={entry.id}>
+              <td>{new Date(entry.fecha).toLocaleString()}</td>
+              <td>
+                <span title={entry.accion}>
+                  {getActionIcon(entry.accion)} {entry.accion}
+                </span>
+              </td>
+              <td>{entry.entidad} #{entry.entidad_id}</td>
+              <td>{entry.usuario_nombre} {entry.usuario_apellido}</td>
+              <td className="changes">{formatChanges(entry.cambios)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+```
+
+## Activity Summary
+
+```javascript
+const getUserActivitySummary = async (userId, startDate, endDate) => {
+  const entries = await getAuditLog({
+    usuario_id: userId,
+    fecha_inicio: startDate,
+    fecha_fin: endDate
+  });
+  
+  const summary = {
+    totalActions: entries.length,
+    byAction: {},
+    byEntity: {},
+    firstAction: entries[entries.length - 1]?.fecha,
+    lastAction: entries[0]?.fecha
+  };
+  
+  entries.forEach(entry => {
+    // Count by action
+    summary.byAction[entry.accion] = (summary.byAction[entry.accion] || 0) + 1;
+    
+    // Count by entity
+    summary.byEntity[entry.entidad] = (summary.byEntity[entry.entidad] || 0) + 1;
+  });
+  
+  return summary;
+};
+
+// Generate weekly report for user
+const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+const today = new Date().toISOString().split('T')[0];
+const summary = await getUserActivitySummary(5, weekAgo, today);
+
+console.log(`User performed ${summary.totalActions} actions this week`);
+console.log('Breakdown:', summary.byAction);
+```
+
+## Export Audit Log
+
+```javascript
+const exportAuditLog = async (filters = {}) => {
+  const entries = await getAuditLog(filters);
+  
+  // Convert to CSV
+  const csv = [
+    ['Date', 'Time', 'Action', 'Entity', 'Record ID', 'User', 'Changes'].join(','),
+    ...entries.map(entry => {
+      const date = new Date(entry.fecha);
+      return [
+        date.toLocaleDateString(),
+        date.toLocaleTimeString(),
+        entry.accion,
+        entry.entidad,
+        entry.entidad_id,
+        `${entry.usuario_nombre} ${entry.usuario_apellido}`,
+        `\"${entry.cambios.replace(/"/g, '"")}\"`
+      ].join(',');
+    })
+  ].join('\n');
+  
+  // Download
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `audit-log-${new Date().toISOString().split('T')[0]}.csv`;
+  a.click();
+};
+```
+
+## TypeScript Interface
+
+```typescript
+export interface AuditEntry {
+  id: number;
+  accion: 'crear' | 'editar' | 'eliminar' | 'exportar' | 'importar';
+  entidad: string;
+  entidad_id: string;
+  usuario_id: number;
+  cambios: string; // JSON string
+  fecha: string; // ISO timestamp
+  usuario_nombre?: string; // From JOIN
+  usuario_apellido?: string; // From JOIN
+}
+```
+
+## Related Endpoints
+
+- [User Management](/api/admin/users) - View user details
+- [Backup Export](/api/admin/backup) - Export full database

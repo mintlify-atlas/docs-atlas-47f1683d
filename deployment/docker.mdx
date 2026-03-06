@@ -1,0 +1,827 @@
+---
+title: Docker Deployment
+description: Deploy APTIV Scrap Control with Docker Compose for production with MySQL, Node.js API, and Nginx
+icon: docker
+---
+
+## Overview
+
+The Docker deployment provides a complete production-ready stack with:
+
+- **MySQL 8** - Persistent database with full ACID compliance
+- **Node.js + Express API** - RESTful backend with JWT authentication
+- **Nginx** - High-performance web server for frontend
+- **Adminer** - Web-based database management tool
+
+All services are orchestrated with Docker Compose for easy management and automatic health checks.
+
+<Note>
+  This deployment is recommended for production environments with multiple users, centralized data, and network access requirements.
+</Note>
+
+## Prerequisites
+
+<Steps>
+  <Step title="Install Docker and Docker Compose">
+    <CodeGroup>
+      ```bash Ubuntu/Debian
+      # Install Docker
+      curl -fsSL https://get.docker.com -o get-docker.sh
+      sudo sh get-docker.sh
+      
+      # Add user to docker group
+      sudo usermod -aG docker $USER
+      
+      # Verify installation
+      docker --version
+      docker-compose --version
+      ```
+      
+      ```bash CentOS/RHEL
+      # Install Docker
+      sudo yum install -y docker
+      sudo systemctl start docker
+      sudo systemctl enable docker
+      
+      # Install Docker Compose
+      sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+      sudo chmod +x /usr/local/bin/docker-compose
+      ```
+      
+      ```bash Windows
+      # Download Docker Desktop from:
+      # https://www.docker.com/products/docker-desktop
+      
+      # Docker Compose is included with Docker Desktop
+      ```
+    </CodeGroup>
+  </Step>
+  
+  <Step title="System Requirements">
+    - **CPU:** 2+ cores recommended
+    - **RAM:** 2 GB minimum, 4 GB recommended
+    - **Disk:** 10 GB free space
+    - **OS:** Linux, Windows 10+, macOS 10.15+
+  </Step>
+  
+  <Step title="Network Requirements">
+    Ensure the following ports are available:
+    - `3306` - MySQL database
+    - `3001` - Node.js API
+    - `8080` - Nginx web server
+    - `8081` - Adminer (optional)
+  </Step>
+</Steps>
+
+## Quick Start
+
+<Steps>
+  <Step title="Build the Frontend">
+    Before starting Docker, compile the React frontend:
+    
+    ```bash
+    npm install
+    npm run build
+    ```
+    
+    This creates the `dist/` directory that Nginx will serve.
+  </Step>
+  
+  <Step title="Start All Services">
+    Launch the entire stack with a single command:
+    
+    ```bash
+    docker-compose up -d
+    ```
+    
+    The `-d` flag runs containers in detached mode (background).
+  </Step>
+  
+  <Step title="Verify Services">
+    Check that all containers are running:
+    
+    ```bash
+    docker-compose ps
+    ```
+    
+    Expected output:
+    ```
+    NAME                  STATUS         PORTS
+    aptiv-scrap-db        Up (healthy)   0.0.0.0:3306->3306/tcp
+    aptiv-scrap-api       Up             0.0.0.0:3001->3001/tcp
+    aptiv-scrap-web       Up             0.0.0.0:8080->80/tcp
+    aptiv-adminer         Up             0.0.0.0:8081->8080/tcp
+    ```
+  </Step>
+  
+  <Step title="Access the Application">
+    Open in your browser:
+    
+    - **Frontend:** `http://localhost:8080`
+    - **API Health:** `http://localhost:3001/api/health`
+    - **Adminer:** `http://localhost:8081`
+    
+    <Note>
+      Replace `localhost` with your server's IP address for network access.
+    </Note>
+  </Step>
+</Steps>
+
+## Docker Compose Configuration
+
+### Services Architecture
+
+```yaml docker-compose.yml
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8
+    container_name: aptiv-scrap-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: scrap2024
+      MYSQL_DATABASE: scrap_control
+      MYSQL_CHARSET: utf8mb4
+      MYSQL_COLLATION: utf8mb4_unicode_ci
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./docs/server/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pscrap2024"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: ./docs/server
+    container_name: aptiv-scrap-api
+    restart: unless-stopped
+    environment:
+      DB_HOST: mysql
+      DB_USER: root
+      DB_PASSWORD: scrap2024
+      DB_NAME: scrap_control
+      JWT_SECRET: aptiv-scrap-secret-2024
+      TZ: America/Mexico_City
+      PORT: 3001
+    ports:
+      - "3001:3001"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    command: >
+      sh -c "
+        echo 'Esperando 5s para que MySQL esté listo...' &&
+        sleep 5 &&
+        node seed.js || true &&
+        node server.js
+      "
+
+  adminer:
+    image: adminer
+    container_name: aptiv-adminer
+    restart: unless-stopped
+    ports:
+      - "8081:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  nginx:
+    image: nginx:alpine
+    container_name: aptiv-scrap-web
+    restart: unless-stopped
+    volumes:
+      - ./dist:/usr/share/nginx/html
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+
+volumes:
+  mysql_data:
+    driver: local
+```
+
+## Service Details
+
+### MySQL Database Service
+
+<Card title="MySQL 8 Configuration" icon="database">
+  **Image:** `mysql:8` (official MySQL 8 image)
+  
+  **Container Name:** `aptiv-scrap-db`
+  
+  **Restart Policy:** `unless-stopped` (survives reboots)
+  
+  **Exposed Port:** `3306` (accessible from host and other containers)
+</Card>
+
+#### Environment Variables
+
+| Variable | Value | Description |
+|----------|-------|-------------|
+| `MYSQL_ROOT_PASSWORD` | `scrap2024` | Root user password |
+| `MYSQL_DATABASE` | `scrap_control` | Database created on initialization |
+| `MYSQL_CHARSET` | `utf8mb4` | Character set for Unicode support |
+| `MYSQL_COLLATION` | `utf8mb4_unicode_ci` | Collation for proper sorting |
+
+#### Volumes
+
+- **Persistent Data:** `mysql_data:/var/lib/mysql` - Database files persisted across container restarts
+- **Init Script:** `./docs/server/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql` - Automatic schema creation on first run
+
+#### Health Check
+
+```yaml
+healthcheck:
+  test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pscrap2024"]
+  interval: 10s      # Check every 10 seconds
+  timeout: 5s        # Fail if no response in 5s
+  retries: 5         # 5 failed checks = unhealthy
+```
+
+Other services wait for MySQL to be healthy before starting.
+
+### Node.js API Service
+
+<Card title="Express API Configuration" icon="server">
+  **Build Context:** `./docs/server` (uses Dockerfile)
+  
+  **Container Name:** `aptiv-scrap-api`
+  
+  **Base Image:** `node:18-alpine` (lightweight Node.js)
+  
+  **Exposed Port:** `3001`
+</Card>
+
+#### Environment Variables
+
+| Variable | Value | Description |
+|----------|-------|-------------|
+| `DB_HOST` | `mysql` | MySQL container hostname (Docker network) |
+| `DB_USER` | `root` | Database username |
+| `DB_PASSWORD` | `scrap2024` | Database password |
+| `DB_NAME` | `scrap_control` | Database name |
+| `JWT_SECRET` | `aptiv-scrap-secret-2024` | Secret key for JWT token signing |
+| `TZ` | `America/Mexico_City` | Timezone for timestamps |
+| `PORT` | `3001` | API listen port |
+
+<Warning>
+  **Security:** Change `JWT_SECRET` and `DB_PASSWORD` in production to secure values.
+</Warning>
+
+#### Dockerfile
+
+```dockerfile
+FROM node:18-alpine
+
+ENV TZ=America/Mexico_City
+
+# Install timezone data
+RUN apk add --no-cache tzdata \
+  && cp /usr/share/zoneinfo/$TZ /etc/localtime \
+  && echo $TZ > /etc/timezone
+
+WORKDIR /app
+
+COPY package.json ./
+RUN npm install --production
+
+COPY . .
+
+EXPOSE 3001
+
+HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
+  CMD wget -qO- http://localhost:3001/api/health || exit 1
+
+CMD ["node", "server.js"]
+```
+
+#### Startup Command
+
+The API container runs a multi-step startup:
+
+```bash
+sh -c "
+  echo 'Esperando 5s para que MySQL esté listo...' &&
+  sleep 5 &&
+  node seed.js || true &&  # Seed demo data (ignore errors)
+  node server.js            # Start API server
+"
+```
+
+**Startup Process:**
+1. Wait 5 seconds for MySQL to fully initialize
+2. Run `seed.js` to populate demo data (first run only)
+3. Start the Express server on port 3001
+
+#### Dependencies
+
+The API uses these npm packages:
+
+```json
+{
+  "express": "^4.18.2",      // Web framework
+  "mysql2": "^3.6.5",        // MySQL driver with Promise support
+  "bcryptjs": "^2.4.3",      // Password hashing
+  "jsonwebtoken": "^9.0.2",  // JWT authentication
+  "cors": "^2.8.5",          // CORS middleware
+  "multer": "^1.4.5-lts.1",  // File upload handling
+  "uuid": "^9.0.0",          // UUID generation
+  "dotenv": "^16.3.1"        // Environment variables
+}
+```
+
+### Nginx Web Server
+
+<Card title="Nginx Configuration" icon="globe">
+  **Image:** `nginx:alpine` (lightweight Nginx)
+  
+  **Container Name:** `aptiv-scrap-web`
+  
+  **Exposed Port:** `8080` (maps to container port 80)
+</Card>
+
+#### Nginx Configuration File
+
+```nginx nginx.conf
+server {
+    listen 80;
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Frontend SPA - serve index.html for all routes
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Proxy API requests to Node.js backend
+    location /api/ {
+        proxy_pass http://api:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    # Gzip compression
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+    gzip_min_length 256;
+
+    # Cache static assets
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+}
+```
+
+**Key Features:**
+- **SPA Routing:** All routes serve `index.html` for client-side routing
+- **API Proxy:** `/api/*` requests forwarded to `api:3001` container
+- **Compression:** Gzip enabled for text assets
+- **Caching:** Static assets cached for 1 year
+
+### Adminer Database Tool
+
+<Card title="Adminer Configuration" icon="table">
+  **Image:** `adminer` (official database management UI)
+  
+  **Container Name:** `aptiv-adminer`
+  
+  **Exposed Port:** `8081` (maps to container port 8080)
+</Card>
+
+**Access Adminer:**
+1. Navigate to `http://localhost:8081`
+2. Login with:
+   - **System:** MySQL
+   - **Server:** `mysql`
+   - **Username:** `root`
+   - **Password:** `scrap2024`
+   - **Database:** `scrap_control`
+
+## Database Initialization
+
+### Automatic Seed Data
+
+On first startup, the API automatically populates the database with:
+
+- **4 demo users** (admin, calidad, supervisor, operator)
+- **5 production areas** (Molding, Assembly, Painting, Testing, Packaging)
+- **20 part numbers** with materials and costs
+- **15 failure modes** categorized by type
+- **3 shifts** with time ranges
+- **4 user roles** with permission matrices
+- **Sample scrap records** for testing reports
+
+<Note>
+  Seed data is idempotent - it checks for existing data before inserting, so it's safe to run multiple times.
+</Note>
+
+### Manual Seed Execution
+
+To re-run the seed script:
+
+```bash
+docker-compose exec api node seed.js
+```
+
+### Running Migrations
+
+For existing databases that need schema updates:
+
+```bash
+# Copy migration file into MySQL container
+docker cp migration.sql aptiv-scrap-db:/tmp/migration.sql
+
+# Execute migration
+docker-compose exec mysql mysql -u root -pscrap2024 scrap_control < /tmp/migration.sql
+```
+
+## Container Management
+
+### Common Commands
+
+<CodeGroup>
+  ```bash Start Services
+  docker-compose up -d
+  ```
+  
+  ```bash Stop Services
+  docker-compose down
+  ```
+  
+  ```bash Restart Services
+  docker-compose restart
+  ```
+  
+  ```bash View Logs
+  # All services
+  docker-compose logs -f
+  
+  # Specific service
+  docker-compose logs -f api
+  docker-compose logs -f mysql
+  docker-compose logs -f nginx
+  ```
+  
+  ```bash Check Status
+  docker-compose ps
+  ```
+  
+  ```bash Execute Commands
+  # Access API container shell
+  docker-compose exec api sh
+  
+  # Access MySQL CLI
+  docker-compose exec mysql mysql -u root -pscrap2024 scrap_control
+  
+  # Run seed script
+  docker-compose exec api node seed.js
+  ```
+</CodeGroup>
+
+### Updating Services
+
+<Steps>
+  <Step title="Update Application Code">
+    ```bash
+    # Pull latest code
+    git pull origin main
+    
+    # Rebuild frontend
+    npm install
+    npm run build
+    ```
+  </Step>
+  
+  <Step title="Rebuild Containers">
+    ```bash
+    # Rebuild and restart
+    docker-compose down
+    docker-compose up -d --build
+    ```
+  </Step>
+  
+  <Step title="Verify Update">
+    ```bash
+    # Check logs for errors
+    docker-compose logs -f
+    
+    # Test health endpoint
+    curl http://localhost:3001/api/health
+    ```
+  </Step>
+</Steps>
+
+## Data Backup and Restore
+
+### Database Backup
+
+<Steps>
+  <Step title="Export MySQL Database">
+    ```bash
+    # Full database dump
+    docker-compose exec mysql mysqldump -u root -pscrap2024 scrap_control > backup_$(date +%Y%m%d_%H%M%S).sql
+    
+    # Compressed backup
+    docker-compose exec mysql mysqldump -u root -pscrap2024 scrap_control | gzip > backup_$(date +%Y%m%d_%H%M%S).sql.gz
+    ```
+  </Step>
+  
+  <Step title="Backup Specific Tables">
+    ```bash
+    # Only scrap records
+    docker-compose exec mysql mysqldump -u root -pscrap2024 scrap_control pesaje > pesaje_backup.sql
+    
+    # Only catalogs
+    docker-compose exec mysql mysqldump -u root -pscrap2024 scrap_control areas catnp fallas turnos > catalogs_backup.sql
+    ```
+  </Step>
+  
+  <Step title="Automated Backup Script">
+    Create a daily backup cron job:
+    
+    ```bash backup.sh
+    #!/bin/bash
+    BACKUP_DIR="/home/user/backups"
+    DATE=$(date +%Y%m%d_%H%M%S)
+    
+    docker-compose exec mysql mysqldump -u root -pscrap2024 scrap_control | gzip > "$BACKUP_DIR/aptiv_scrap_$DATE.sql.gz"
+    
+    # Keep only last 30 days
+    find $BACKUP_DIR -name "aptiv_scrap_*.sql.gz" -mtime +30 -delete
+    ```
+    
+    Add to crontab:
+    ```bash
+    0 2 * * * /path/to/backup.sh
+    ```
+  </Step>
+</Steps>
+
+### Database Restore
+
+<Steps>
+  <Step title="Stop API Service">
+    ```bash
+    docker-compose stop api
+    ```
+  </Step>
+  
+  <Step title="Restore from Backup">
+    ```bash
+    # From SQL file
+    docker-compose exec -T mysql mysql -u root -pscrap2024 scrap_control < backup.sql
+    
+    # From compressed backup
+    gunzip < backup.sql.gz | docker-compose exec -T mysql mysql -u root -pscrap2024 scrap_control
+    ```
+  </Step>
+  
+  <Step title="Restart Services">
+    ```bash
+    docker-compose start api
+    docker-compose logs -f api
+    ```
+  </Step>
+</Steps>
+
+### Volume Backup
+
+Backup the entire MySQL data volume:
+
+```bash
+# Stop MySQL to ensure consistency
+docker-compose stop mysql
+
+# Create volume backup
+docker run --rm -v aptiv-scrap-control_mysql_data:/data -v $(pwd):/backup alpine tar czf /backup/mysql_volume_$(date +%Y%m%d).tar.gz /data
+
+# Restart MySQL
+docker-compose start mysql
+```
+
+## Health Checks and Monitoring
+
+### API Health Endpoint
+
+```bash
+curl http://localhost:3001/api/health
+```
+
+Response:
+```json
+{
+  "status": "ok",
+  "timestamp": "2024-03-15T10:30:45.123Z",
+  "uptime": 3600,
+  "database": "connected"
+}
+```
+
+### Container Health Status
+
+```bash
+# View health status
+docker-compose ps
+
+# Detailed inspection
+docker inspect --format='{{.State.Health.Status}}' aptiv-scrap-api
+docker inspect --format='{{.State.Health.Status}}' aptiv-scrap-db
+```
+
+### Resource Usage
+
+```bash
+# Container stats (CPU, memory, network)
+docker stats
+
+# Disk usage
+docker system df
+
+# Volume size
+docker volume inspect aptiv-scrap-control_mysql_data
+```
+
+## Troubleshooting
+
+### MySQL Container Won't Start
+
+<Steps>
+  <Step title="Check Logs">
+    ```bash
+    docker-compose logs mysql
+    ```
+    
+    Common issues:
+    - Port 3306 already in use
+    - Insufficient disk space
+    - Corrupted data volume
+  </Step>
+  
+  <Step title="Reset Database">
+    <Warning>
+      This will delete all data. Backup first!
+    </Warning>
+    
+    ```bash
+    docker-compose down -v
+    docker volume rm aptiv-scrap-control_mysql_data
+    docker-compose up -d
+    ```
+  </Step>
+</Steps>
+
+### API Returns 502 Bad Gateway
+
+```bash
+# Check API container status
+docker-compose ps api
+
+# View API logs
+docker-compose logs -f api
+
+# Restart API
+docker-compose restart api
+
+# Verify MySQL connectivity
+docker-compose exec api ping mysql
+```
+
+### Permission Denied Errors
+
+```bash
+# Fix file ownership
+sudo chown -R $USER:$USER .
+
+# Rebuild containers
+docker-compose down
+docker-compose up -d --build
+```
+
+### Port Already in Use
+
+Change ports in `docker-compose.yml`:
+
+```yaml
+services:
+  mysql:
+    ports:
+      - "13306:3306"  # Changed from 3306
+  api:
+    ports:
+      - "13001:3001"  # Changed from 3001
+  nginx:
+    ports:
+      - "18080:80"    # Changed from 8080
+```
+
+Update API environment:
+```yaml
+environment:
+  DB_HOST: mysql
+  # Note: Use container port (3306), not host port
+```
+
+### Complete Reset
+
+Nuclear option - start completely fresh:
+
+```bash
+# Stop and remove everything
+docker-compose down -v
+
+# Remove all images
+docker rmi $(docker images -q aptiv-scrap-*)
+
+# Clean Docker system
+docker system prune -a --volumes
+
+# Rebuild from scratch
+npm run build
+docker-compose up -d --build
+```
+
+## Production Hardening
+
+### Security Checklist
+
+<Steps>
+  <Step title="Change Default Passwords">
+    Update in `docker-compose.yml`:
+    ```yaml
+    environment:
+      MYSQL_ROOT_PASSWORD: <strong-random-password>
+      DB_PASSWORD: <strong-random-password>
+      JWT_SECRET: <random-256-bit-string>
+    ```
+  </Step>
+  
+  <Step title="Restrict Port Exposure">
+    Remove external port bindings for internal services:
+    ```yaml
+    mysql:
+      # ports:
+      #   - "3306:3306"  # Commented - only accessible from containers
+    
+    api:
+      # ports:
+      #   - "3001:3001"  # Commented - access via Nginx proxy only
+    ```
+  </Step>
+  
+  <Step title="Enable SSL/TLS">
+    Configure Nginx with SSL certificates:
+    ```nginx
+    server {
+        listen 443 ssl;
+        ssl_certificate /etc/nginx/ssl/cert.pem;
+        ssl_certificate_key /etc/nginx/ssl/key.pem;
+    }
+    ```
+  </Step>
+  
+  <Step title="Implement Rate Limiting">
+    Add to `nginx.conf`:
+    ```nginx
+    limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10r/s;
+    
+    location /api/ {
+        limit_req zone=api_limit burst=20;
+        proxy_pass http://api:3001;
+    }
+    ```
+  </Step>
+</Steps>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Network Setup" icon="network-wired" href="/deployment/network-setup">
+    Configure LAN access and firewall rules
+  </Card>
+  
+  <Card title="API Reference" icon="code" href="/api-reference/overview">
+    Explore available API endpoints
+  </Card>
+  
+  <Card title="Database Schema" icon="database" href="/configuration/catalogs">
+    Understand the database structure
+  </Card>
+  
+  <Card title="Monitoring" icon="chart-line" href="/features/dashboard">
+    Set up logging and monitoring
+  </Card>
+</CardGroup>

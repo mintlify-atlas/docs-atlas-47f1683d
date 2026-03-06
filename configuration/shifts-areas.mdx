@@ -1,0 +1,509 @@
+---
+title: 'Shifts & Areas Configuration'
+description: 'Configure work shifts with time ranges and production areas'
+icon: 'clock'
+---
+
+Shifts and areas define when and where scrap is generated in the manufacturing facility. Proper configuration ensures accurate time-based reporting and area-specific tracking.
+
+## Shifts (Turnos)
+
+Shifts represent work periods throughout the day with defined start and end times.
+
+### TypeScript Interface
+
+```typescript types.ts
+export interface Turno {
+  id: number;
+  nombre: string;            // Shift name
+  codigo: string;            // Short code (T1, T2, T3)
+  hora_inicio: number;       // Start hour (0-23)
+  hora_fin: number;          // End hour (0-23)
+  gerente_id?: number;       // Optional: shift manager ID
+  activo: number;            // 1=active, 0=inactive
+}
+```
+
+### Database Schema
+
+```sql schema.sql
+CREATE TABLE IF NOT EXISTS turnos (
+  id int AUTO_INCREMENT PRIMARY KEY,
+  nombre varchar(50) NOT NULL,
+  codigo varchar(10) NOT NULL,
+  hora_inicio int NOT NULL,
+  hora_fin int NOT NULL,
+  gerente_id int DEFAULT NULL,
+  activo TINYINT DEFAULT 1
+);
+```
+
+---
+
+## Standard Shift Configuration
+
+APTIV typically operates on a 3-shift, 24-hour production schedule:
+
+<CardGroup cols={3}>
+  <Card title="Turno 1 (Matutino)" icon="sunrise">
+    **Morning Shift**
+    
+    - **Code:** T1
+    - **Hours:** 6:00 - 14:00
+    - **Duration:** 8 hours
+  </Card>
+  <Card title="Turno 2 (Vespertino)" icon="sun">
+    **Afternoon Shift**
+    
+    - **Code:** T2
+    - **Hours:** 14:00 - 22:00
+    - **Duration:** 8 hours
+  </Card>
+  <Card title="Turno 3 (Nocturno)" icon="moon">
+    **Night Shift**
+    
+    - **Code:** T3
+    - **Hours:** 22:00 - 6:00
+    - **Duration:** 8 hours
+  </Card>
+</CardGroup>
+
+### Shift Data
+
+```typescript seed.ts
+export const seedTurnos: Turno[] = [
+  { id: 1, nombre: 'Turno 1 (Matutino)', codigo: 'T1', hora_inicio: 6, hora_fin: 14, activo: 1 },
+  { id: 2, nombre: 'Turno 2 (Vespertino)', codigo: 'T2', hora_inicio: 14, hora_fin: 22, activo: 1 },
+  { id: 3, nombre: 'Turno 3 (Nocturno)', codigo: 'T3', hora_inicio: 22, hora_fin: 6, activo: 1 },
+];
+```
+
+<Note>
+**Overnight Shifts:** When `hora_fin` is less than `hora_inicio` (e.g., 22:00 to 6:00), the system automatically handles the day boundary. Turno 3 runs from 22:00 today to 6:00 tomorrow.
+</Note>
+
+---
+
+## Shift Time Configuration
+
+### Hour Format
+
+Shift times use 24-hour format (military time) stored as integers:
+
+| Hour | Value | Time |
+|------|-------|------|
+| Midnight | `0` | 00:00 |
+| 6 AM | `6` | 06:00 |
+| Noon | `12` | 12:00 |
+| 2 PM | `14` | 14:00 |
+| 6 PM | `18` | 18:00 |
+| 10 PM | `22` | 22:00 |
+
+### Automatic Shift Detection
+
+When operators register scrap, the system automatically determines the current shift based on the timestamp:
+
+```typescript
+// Simplified shift detection logic
+function getCurrentShift(currentHour: number, turnos: Turno[]): Turno {
+  return turnos.find(t => {
+    if (t.hora_inicio < t.hora_fin) {
+      // Standard shift (doesn't cross midnight)
+      return currentHour >= t.hora_inicio && currentHour < t.hora_fin;
+    } else {
+      // Overnight shift (crosses midnight)
+      return currentHour >= t.hora_inicio || currentHour < t.hora_fin;
+    }
+  });
+}
+```
+
+### Manual Override
+
+Operators can manually select a different shift if registering scrap retroactively or for a different shift.
+
+---
+
+## Shift Manager Assignment
+
+Each shift can be assigned a manager for accountability:
+
+### Linking Manager to Shift
+
+```sql
+UPDATE turnos 
+SET gerente_id = 2 
+WHERE id = 1;
+```
+
+This assigns user ID 2 as the manager for Turno 1.
+
+### Manager Responsibilities
+
+<Steps>
+  <Step title="Shift Oversight">
+    Monitor scrap generation during their assigned shift
+  </Step>
+  <Step title="Report Review">
+    Review daily scrap reports for their shift before handoff
+  </Step>
+  <Step title="Alert Response">
+    Respond to tolerance alerts generated during their shift
+  </Step>
+  <Step title="Root Cause Analysis">
+    Investigate scrap spikes and implement corrective actions
+  </Step>
+</Steps>
+
+---
+
+## Areas Configuration
+
+Areas define physical or functional production zones where scrap is generated.
+
+### TypeScript Interface
+
+```typescript types.ts
+export interface Area {
+  id: number;
+  AREA: string;              // Area name
+  CADENA: string;            // Associated production chain
+  TURNO: string;             // Default shift
+  TIPO: string;              // Type: Producción or Calidad
+  NOMENCLATURA: string;      // Short code (ARN, CON, CAB)
+  activo: number;            // 1=active, 0=inactive
+}
+```
+
+### Database Schema
+
+```sql schema.sql
+CREATE TABLE IF NOT EXISTS areas (
+  id int DEFAULT NULL,
+  AREA varchar(50) DEFAULT NULL,
+  CADENA varchar(50) DEFAULT NULL,
+  TURNO varchar(10) DEFAULT NULL,
+  TIPO varchar(50) DEFAULT NULL,
+  NOMENCLATURA varchar(50) DEFAULT NULL,
+  activo TINYINT DEFAULT 1
+);
+```
+
+---
+
+## Standard Areas
+
+### Production Areas
+
+<Accordion title="Arneses (Wire Harnesses)">
+  **Code:** ARN
+  
+  Manufactures wire harnesses and cable assemblies:
+  - Cable cutting and stripping
+  - Terminal crimping
+  - Wire bundling
+  - Quality testing
+  
+  **Associated Chain:** Cadena 1  
+  **Default Shift:** T1
+</Accordion>
+
+<Accordion title="Conectores (Connectors)">
+  **Code:** CON
+  
+  Produces electrical connectors and housings:
+  - Connector molding
+  - Contact insertion
+  - Housing assembly
+  - Visual inspection
+  
+  **Associated Chain:** Cadena 2  
+  **Default Shift:** T1
+</Accordion>
+
+<Accordion title="Cable">
+  **Code:** CAB
+  
+  Cable processing and preparation:
+  - Cable cutting
+  - Insulation stripping
+  - Shielding application
+  - Length verification
+  
+  **Associated Chain:** Cadena 1  
+  **Default Shift:** T2
+</Accordion>
+
+<Accordion title="Ensamble (Assembly)">
+  **Code:** ENS
+  
+  Final assembly operations:
+  - Component integration
+  - Module assembly
+  - Functional testing
+  - Packaging
+  
+  **Associated Chain:** Cadena 3  
+  **Default Shift:** T1
+</Accordion>
+
+<Accordion title="Moldeo (Molding)">
+  **Code:** MOL
+  
+  Plastic injection molding:
+  - Connector housing molding
+  - Component overmolding
+  - Flash removal
+  - Dimensional inspection
+  
+  **Associated Chain:** Cadena 2  
+  **Default Shift:** T2
+</Accordion>
+
+<Accordion title="Corte (Cutting)">
+  **Code:** COR
+  
+  Material cutting operations:
+  - Wire cutting to length
+  - Tube cutting
+  - Precision trimming
+  - Length validation
+  
+  **Associated Chain:** Cadena 1  
+  **Default Shift:** T3
+</Accordion>
+
+<Accordion title="Soldadura (Welding)">
+  **Code:** SOL
+  
+  Welding and soldering:
+  - Terminal soldering
+  - Contact welding
+  - Joint inspection
+  - Electrical testing
+  
+  **Associated Chain:** Cadena 4  
+  **Default Shift:** T1
+</Accordion>
+
+### Quality Areas
+
+<Accordion title="Pruebas (Testing)">
+  **Code:** PRU
+  
+  Quality control and testing:
+  - Electrical continuity testing
+  - Resistance measurement
+  - Visual inspection
+  - Final certification
+  
+  **Type:** Calidad  
+  **Associated Chain:** Cadena 3  
+  **Default Shift:** T1
+</Accordion>
+
+---
+
+## Area Sample Data
+
+```typescript seed.ts
+export const seedAreas: Area[] = [
+  { id: 1, AREA: 'Arneses', CADENA: 'Cadena 1', TURNO: '1', TIPO: 'Producción', NOMENCLATURA: 'ARN', activo: 1 },
+  { id: 2, AREA: 'Conectores', CADENA: 'Cadena 2', TURNO: '1', TIPO: 'Producción', NOMENCLATURA: 'CON', activo: 1 },
+  { id: 3, AREA: 'Cable', CADENA: 'Cadena 1', TURNO: '2', TIPO: 'Producción', NOMENCLATURA: 'CAB', activo: 1 },
+  { id: 4, AREA: 'Ensamble', CADENA: 'Cadena 3', TURNO: '1', TIPO: 'Producción', NOMENCLATURA: 'ENS', activo: 1 },
+  { id: 5, AREA: 'Moldeo', CADENA: 'Cadena 2', TURNO: '2', TIPO: 'Producción', NOMENCLATURA: 'MOL', activo: 1 },
+  { id: 6, AREA: 'Pruebas', CADENA: 'Cadena 3', TURNO: '1', TIPO: 'Calidad', NOMENCLATURA: 'PRU', activo: 1 },
+  { id: 7, AREA: 'Corte', CADENA: 'Cadena 1', TURNO: '3', TIPO: 'Producción', NOMENCLATURA: 'COR', activo: 1 },
+  { id: 8, AREA: 'Soldadura', CADENA: 'Cadena 4', TURNO: '1', TIPO: 'Producción', NOMENCLATURA: 'SOL', activo: 1 },
+];
+```
+
+---
+
+## Area Types
+
+### Producción (Production)
+
+Areas where manufacturing operations occur:
+- Generate process scrap (cutting errors, molding defects)
+- Tracked for process improvement initiatives
+- Linked to production chains and lines
+
+### Calidad (Quality)
+
+Areas where testing and inspection occur:
+- Generate inspection scrap (failed tests, out-of-spec parts)
+- Used for quality metrics and Six Sigma analysis
+- May span multiple production chains
+
+---
+
+## Managing Shifts and Areas
+
+### Adding a New Shift
+
+<Steps>
+  <Step title="Navigate to Shifts Catalog">
+    Go to **Catálogos** → **Turnos**
+  </Step>
+  <Step title="Create Shift">
+    Click **+ Agregar** and enter:
+    - **Nombre**: Descriptive name ("Turno 4 - Fin de Semana")
+    - **Código**: Short code ("T4")
+    - **Hora Inicio**: Start hour (0-23)
+    - **Hora Fin**: End hour (0-23)
+  </Step>
+  <Step title="Assign Manager (Optional)">
+    Select a user ID as shift manager if applicable
+  </Step>
+  <Step title="Save">
+    Click **Guardar** to activate the shift
+  </Step>
+</Steps>
+
+### Adding a New Area
+
+<Steps>
+  <Step title="Navigate to Areas Catalog">
+    Go to **Catálogos** → **Áreas**
+  </Step>
+  <Step title="Create Area">
+    Click **+ Agregar** and enter:
+    - **AREA**: Full area name
+    - **CADENA**: Associated production chain
+    - **TURNO**: Default shift (1, 2, or 3)
+    - **TIPO**: "Producción" or "Calidad"
+    - **NOMENCLATURA**: 3-letter code
+  </Step>
+  <Step title="Save">
+    Click **Guardar** to create the area
+  </Step>
+</Steps>
+
+---
+
+## Shift and Area Reporting
+
+### By Shift Reports
+
+```typescript
+GET /api/reports/by-turno?start=2024-01-01&end=2024-01-31
+```
+
+Returns scrap totals by shift:
+
+```json
+[
+  {
+    "turno": "T1",
+    "total_pzas": 450,
+    "total_peso": 56.25,
+    "total_costo": 1125.00
+  },
+  {
+    "turno": "T2",
+    "total_pzas": 380,
+    "total_peso": 48.60,
+    "total_costo": 985.50
+  },
+  {
+    "turno": "T3",
+    "total_pzas": 295,
+    "total_peso": 35.40,
+    "total_costo": 742.50
+  }
+]
+```
+
+### By Area Reports
+
+```typescript
+GET /api/reports/by-area?start=2024-01-01&end=2024-01-31
+```
+
+Returns scrap totals by production area:
+
+```json
+[
+  {
+    "area": "Arneses",
+    "total_pzas": 350,
+    "total_peso": 43.75,
+    "total_costo": 875.00
+  },
+  {
+    "area": "Conectores",
+    "total_pzas": 280,
+    "total_peso": 12.60,
+    "total_costo": 504.00
+  }
+]
+```
+
+---
+
+## Area-Specific Tolerances
+
+Areas can have customized scrap tolerance limits:
+
+```typescript seed.ts
+{
+  id: 2,
+  nombre: 'Límite diario Arneses',
+  tipo_objetivo: 'area',
+  objetivo_id: 'Arneses',
+  tipo_periodo: 'diario',
+  cantidad_max: 50,
+  costo_max: 500,
+  porcentaje_alerta: 75,
+  activo: 1
+}
+```
+
+When the Arneses area reaches 37.5 pieces (75% of 50) in a day, an alert is triggered.
+
+---
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Align Shifts to Operations" icon="clock">
+    Configure shift times to match actual production schedules, accounting for breaks and shift handoffs.
+  </Card>
+  <Card title="Use Consistent Nomenclature" icon="tag">
+    Standardize area codes (3 letters, all caps) for barcode compatibility and quick reference.
+  </Card>
+  <Card title="Link Areas to Chains" icon="link">
+    Ensure each area is correctly associated with its production chain for accurate reporting hierarchy.
+  </Card>
+  <Card title="Set Realistic Default Shifts" icon="calendar">
+    Assign the most common shift to each area to reduce manual selection during scrap registration.
+  </Card>
+</CardGroup>
+
+---
+
+## API Reference
+
+### Shifts Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/catalogs/turnos` | List all shifts |
+| POST | `/api/catalogs/turnos` | Create new shift |
+| PUT | `/api/catalogs/turnos/:id` | Update shift |
+| DELETE | `/api/catalogs/turnos/:id` | Deactivate shift |
+
+### Areas Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/catalogs/areas` | List all areas |
+| POST | `/api/catalogs/areas` | Create new area |
+| PUT | `/api/catalogs/areas/:id` | Update area |
+| DELETE | `/api/catalogs/areas/:id` | Deactivate area |
+
+<Note>
+All endpoints require authentication and the **manage_catalogs** permission.
+</Note>

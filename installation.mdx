@@ -1,0 +1,572 @@
+---
+title: Installation
+description: Deploy APTIV Scrap Control in standalone or production mode
+icon: download
+---
+
+APTIV Scrap Control can be deployed in two configurations:
+- **Standalone Mode**: Frontend only using localStorage (no backend required)
+- **Production Mode**: Full stack with MySQL, Node.js API, and Nginx
+
+## System Requirements
+
+<Tabs>
+  <Tab title="Standalone">
+    - Modern web browser (Chrome, Firefox, Edge)
+    - Node.js 18+ (only for building)
+    - 100 MB disk space
+  </Tab>
+  <Tab title="Production">
+    - Docker and Docker Compose
+    - 2 GB RAM minimum
+    - 10 GB disk space
+    - LAN network configured
+  </Tab>
+</Tabs>
+
+## Standalone Installation
+
+Perfect for testing, demos, or single-computer use without database.
+
+<Steps>
+  <Step title="Clone the Repository">
+    ```bash
+    git clone <repo-url>
+    cd aptiv-scrap-control
+    ```
+  </Step>
+
+  <Step title="Install Dependencies">
+    ```bash
+    npm install
+    ```
+
+    <Note>
+    The project uses React 19, Vite 7, and Tailwind CSS v4
+    </Note>
+
+    <CodeGroup>
+    ```json Key Dependencies
+    {
+      "dependencies": {
+        "react": "19.2.3",
+        "react-dom": "19.2.3",
+        "date-fns": "^4.1.0",
+        "recharts": "^3.7.0",
+        "lucide-react": "^0.574.0",
+        "jspdf": "^4.1.0",
+        "jspdf-autotable": "^5.0.7"
+      }
+    }
+    ```
+
+    ```json Dev Dependencies
+    {
+      "devDependencies": {
+        "vite": "7.2.4",
+        "@vitejs/plugin-react": "5.1.1",
+        "tailwindcss": "4.1.17",
+        "@tailwindcss/vite": "4.1.17",
+        "typescript": "5.9.3"
+      }
+    }
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Build the Application">
+    ```bash
+    npm run build
+    ```
+
+    This generates optimized production files in the `dist/` directory.
+
+    <Tip>
+    Build time: ~30 seconds on modern hardware
+    </Tip>
+  </Step>
+
+  <Step title="Serve the Application">
+    Choose one of these options:
+
+    <CodeGroup>
+    ```bash Option A: Node.js Server
+    npx serve dist
+    ```
+
+    ```bash Option B: Python Server
+    cd dist
+    python -m http.server 8080
+    ```
+
+    ```bash Option C: Direct Browser Access
+    # Open dist/index.html directly in browser
+    open dist/index.html  # macOS
+    start dist/index.html # Windows
+    ```
+    </CodeGroup>
+
+    <Warning>
+    Opening directly may have CORS issues. Use a local server for best results.
+    </Warning>
+  </Step>
+
+  <Step title="Access the Application">
+    Open your browser to:
+    ```
+    http://localhost:5000
+    ```
+
+    Login with demo credentials:
+    - **Admin**: `admin` / `admin123`
+    - **Quality**: `calidad` / `calidad123`
+    - **Supervisor**: `supervisor1` / `super123`
+    - **Operator**: `operador1` / `oper123`
+  </Step>
+</Steps>
+
+<Note>
+In standalone mode, all data is stored in browser localStorage (5-10MB limit). Data persists across sessions but is not shared between devices.
+</Note>
+
+## Production Installation (Docker)
+
+Full deployment with MySQL database, Node.js API, and Nginx frontend.
+
+<Steps>
+  <Step title="Prepare the Environment">
+    Ensure Docker and Docker Compose are installed:
+
+    ```bash
+    docker --version
+    docker-compose --version
+    ```
+
+    <Tip>
+    Minimum Docker version: 20.10+
+    </Tip>
+  </Step>
+
+  <Step title="Build the Frontend">
+    ```bash
+    npm install
+    npm run build
+    ```
+
+    The `dist/` folder will be mounted in the Nginx container.
+  </Step>
+
+  <Step title="Review Docker Configuration">
+    The `docker-compose.yml` defines three services:
+
+    ```yaml docker-compose.yml
+    version: '3.8'
+
+    services:
+      # MySQL 8 - Database
+      mysql:
+        image: mysql:8
+        container_name: aptiv-scrap-db
+        restart: unless-stopped
+        environment:
+          MYSQL_ROOT_PASSWORD: scrap2024
+          MYSQL_DATABASE: scrap_control
+          MYSQL_CHARSET: utf8mb4
+          MYSQL_COLLATION: utf8mb4_unicode_ci
+        volumes:
+          - mysql_data:/var/lib/mysql
+          - ./docs/server/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+        ports:
+          - "3306:3306"
+        healthcheck:
+          test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pscrap2024"]
+          interval: 10s
+          timeout: 5s
+          retries: 5
+
+      # Node.js API
+      api:
+        build: ./docs/server
+        container_name: aptiv-scrap-api
+        restart: unless-stopped
+        environment:
+          DB_HOST: mysql
+          DB_USER: root
+          DB_PASSWORD: scrap2024
+          DB_NAME: scrap_control
+          JWT_SECRET: aptiv-scrap-secret-2024
+          TZ: America/Mexico_City
+          PORT: 3001
+        ports:
+          - "3001:3001"
+        depends_on:
+          mysql:
+            condition: service_healthy
+
+      # Nginx - Frontend
+      nginx:
+        image: nginx:alpine
+        container_name: aptiv-scrap-web
+        restart: unless-stopped
+        volumes:
+          - ./dist:/usr/share/nginx/html
+          - ./nginx.conf:/etc/nginx/conf.d/default.conf
+        ports:
+          - "8080:80"
+        depends_on:
+          - api
+    ```
+  </Step>
+
+  <Step title="Start the Services">
+    ```bash
+    docker-compose up -d
+    ```
+
+    This launches:
+    - **MySQL 8** on port `3306`
+    - **API** on port `3001`
+    - **Nginx** on port `8080`
+
+    <Note>
+    The API automatically runs `seed.js` on first startup to populate demo data.
+    </Note>
+  </Step>
+
+  <Step title="Verify Deployment">
+    Check that all containers are running:
+
+    ```bash
+    docker-compose ps
+    ```
+
+    Expected output:
+    ```
+    NAME                 STATUS         PORTS
+    aptiv-scrap-db       Up (healthy)   0.0.0.0:3306->3306/tcp
+    aptiv-scrap-api      Up             0.0.0.0:3001->3001/tcp
+    aptiv-scrap-web      Up             0.0.0.0:8080->80/tcp
+    ```
+
+    <Tip>
+    View logs: `docker-compose logs -f`
+    </Tip>
+  </Step>
+
+  <Step title="Access the Application">
+    Open your browser to:
+    ```
+    http://<SERVER-IP>:8080
+    ```
+
+    For local testing:
+    ```
+    http://localhost:8080
+    ```
+  </Step>
+</Steps>
+
+## Environment Variables
+
+Configure the backend API with these environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DB_HOST` | `localhost` | MySQL hostname |
+| `DB_USER` | `root` | MySQL username |
+| `DB_PASSWORD` | `scrap2024` | MySQL password |
+| `DB_NAME` | `scrap_control` | Database name |
+| `JWT_SECRET` | `aptiv-scrap-secret-2024` | JWT signing secret |
+| `PORT` | `3001` | API server port |
+| `TZ` | `America/Mexico_City` | Timezone |
+
+<Warning>
+**Security**: Change `DB_PASSWORD` and `JWT_SECRET` in production!
+</Warning>
+
+## Network Configuration
+
+For LAN deployment across multiple devices:
+
+<Steps>
+  <Step title="Configure Static IP">
+    Set a static IP address on the server machine:
+
+    ```bash
+    # Example for Ubuntu/Debian
+    sudo nano /etc/netplan/01-netcfg.yaml
+    ```
+
+    ```yaml
+    network:
+      version: 2
+      ethernets:
+        eth0:
+          addresses:
+            - 192.168.1.100/24
+          gateway4: 192.168.1.1
+          nameservers:
+            addresses: [8.8.8.8, 8.8.4.4]
+    ```
+
+    Apply configuration:
+    ```bash
+    sudo netplan apply
+    ```
+  </Step>
+
+  <Step title="Open Firewall Ports">
+    Allow incoming connections on ports 8080 and 3001:
+
+    ```bash
+    # Ubuntu/Debian
+    sudo ufw allow 8080/tcp
+    sudo ufw allow 3001/tcp
+    sudo ufw enable
+    ```
+
+    ```bash
+    # CentOS/RHEL
+    sudo firewall-cmd --permanent --add-port=8080/tcp
+    sudo firewall-cmd --permanent --add-port=3001/tcp
+    sudo firewall-cmd --reload
+    ```
+  </Step>
+
+  <Step title="Test LAN Access">
+    From another device on the same network:
+
+    ```bash
+    # Test connectivity
+    ping 192.168.1.100
+    
+    # Test web interface
+    curl http://192.168.1.100:8080
+    
+    # Test API
+    curl http://192.168.1.100:3001/api/health
+    ```
+
+    <Note>
+    Clients access the application at: `http://192.168.1.100:8080`
+    </Note>
+  </Step>
+</Steps>
+
+## Database Management
+
+### Manual Seed Execution
+
+If you need to re-run the seed data:
+
+```bash
+docker-compose exec api node seed.js
+```
+
+### Database Migrations
+
+For existing databases, run migrations to add new fields:
+
+```bash
+docker-compose exec mysql mysql -u root -pscrap2024 scrap_control < /path/to/migration.sql
+```
+
+### Direct MySQL Access
+
+Connect to MySQL console:
+
+```bash
+docker-compose exec mysql mysql -u root -pscrap2024 scrap_control
+```
+
+### Database Backup
+
+```bash
+# Export database
+docker-compose exec mysql mysqldump -u root -pscrap2024 scrap_control > backup.sql
+
+# Import database
+docker-compose exec -T mysql mysql -u root -pscrap2024 scrap_control < backup.sql
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Frontend not showing data">
+    **Symptoms**: Login works but no data appears
+
+    **Solutions**:
+    1. Check localStorage is not full (5-10MB limit)
+    2. Clear browser cache and localStorage
+    3. Use "Reiniciar Aplicación" button in Backups section
+    4. Verify API connectivity in browser console
+
+    ```javascript
+    // Check localStorage usage
+    console.log(JSON.stringify(localStorage).length + ' bytes');
+    
+    // Clear localStorage
+    localStorage.clear();
+    ```
+  </Accordion>
+
+  <Accordion title="Docker services won't start">
+    **Symptoms**: Containers exit immediately or stay unhealthy
+
+    **Solutions**:
+
+    ```bash
+    # View detailed logs
+    docker-compose logs -f
+
+    # Restart everything fresh
+    docker-compose down -v
+    docker-compose up -d --build
+
+    # Check individual container
+    docker logs aptiv-scrap-db
+    docker logs aptiv-scrap-api
+    docker logs aptiv-scrap-web
+    ```
+
+    Common issues:
+    - Port already in use (change ports in docker-compose.yml)
+    - Insufficient disk space (check with `df -h`)
+    - Permission issues (run with `sudo` if needed)
+  </Accordion>
+
+  <Accordion title="MySQL connection refused">
+    **Symptoms**: API can't connect to database
+
+    **Solutions**:
+
+    ```bash
+    # Verify MySQL is running
+    docker-compose ps mysql
+
+    # Check MySQL logs
+    docker-compose logs mysql
+
+    # Test MySQL connectivity
+    docker-compose exec mysql mysqladmin ping -h localhost -u root -pscrap2024
+
+    # Manually connect to verify credentials
+    docker-compose exec mysql mysql -u root -pscrap2024 scrap_control
+    ```
+  </Accordion>
+
+  <Accordion title="API returns 401 Unauthorized">
+    **Symptoms**: Login fails or requests are rejected
+
+    **Causes**:
+    - JWT token expired (12-hour lifetime)
+    - Invalid credentials
+    - Token not being sent in requests
+
+    **Solutions**:
+    1. Log out and log back in
+    2. Clear browser cookies
+    3. Verify JWT_SECRET matches between sessions
+    4. Check browser console for error messages
+  </Accordion>
+
+  <Accordion title="Barcode scanner not working">
+    **Symptoms**: Scanner beeps but nothing happens
+
+    **Solutions**:
+    1. Configure scanner to send Enter (CR) after scan
+    2. Set scanner to HID keyboard mode
+    3. Test scanner in a text editor first
+    4. Verify scanner speed settings
+    5. Check if scanner needs driver installation
+
+    <Note>
+    The system detects scanner input by measuring time between keystrokes (less than 80ms)
+    </Note>
+  </Accordion>
+</AccordionGroup>
+
+## Performance Optimization
+
+### Database Indexing
+
+Ensure critical fields are indexed for fast queries:
+
+```sql
+CREATE INDEX idx_pesaje_fecha ON pesajes(FECHA_REGISTRO);
+CREATE INDEX idx_pesaje_area ON pesajes(AREA);
+CREATE INDEX idx_pesaje_turno ON pesajes(TURNO);
+CREATE INDEX idx_pesaje_np ON pesajes(NP);
+```
+
+### Nginx Caching
+
+Add caching to `nginx.conf` for better performance:
+
+```nginx
+location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2)$ {
+    expires 1y;
+    add_header Cache-Control "public, immutable";
+}
+```
+
+### API Rate Limiting
+
+Protect against abuse by adding rate limiting:
+
+```javascript
+const rateLimit = require('express-rate-limit');
+
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100 // limit each IP to 100 requests per windowMs
+});
+
+app.use('/api/', limiter);
+```
+
+## Monitoring
+
+### Health Check Endpoint
+
+Verify API status:
+
+```bash
+curl http://localhost:3001/api/health
+```
+
+Expected response:
+```json
+{
+  "status": "ok",
+  "timestamp": "2024-03-06T12:00:00.000Z",
+  "uptime": 3600
+}
+```
+
+### Docker Resource Usage
+
+```bash
+# Monitor container resources
+docker stats aptiv-scrap-db aptiv-scrap-api aptiv-scrap-web
+
+# Check disk usage
+docker system df
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart Guide" icon="rocket" href="/quickstart">
+    Learn how to use the application
+  </Card>
+  <Card title="User Management" icon="users" href="/user-management/roles-permissions">
+    Configure user accounts and roles
+  </Card>
+  <Card title="Configuration" icon="cog" href="/configuration/catalogs">
+    Set up catalogs and production lines
+  </Card>
+  <Card title="Backup & Restore" icon="database" href="/api/admin/backup">
+    Data protection strategies
+  </Card>
+</CardGroup>

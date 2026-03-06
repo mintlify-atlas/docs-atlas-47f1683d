@@ -1,0 +1,314 @@
+---
+title: 'Delete Scrap Record'
+api: 'DELETE /api/scrap/:id'
+description: 'Soft delete a scrap record (marks as deleted)'
+---
+
+## Overview
+
+Performs a soft delete on a scrap record by setting the `ELIMINADO` flag to 1. The record remains in the database but is excluded from queries and reports.
+
+<Warning>
+  **Soft Delete:** Records are not physically removed from the database. They are marked as deleted (`ELIMINADO = 1`) and can be restored by administrators if needed.
+</Warning>
+
+<Note>
+  **Permissions:** Only users with `calidad` or `admin` roles can delete records. Regular supervisors and operators cannot delete records.
+</Note>
+
+## Authentication
+
+Requires valid JWT token with appropriate permissions.
+
+```
+Authorization: Bearer <token>
+```
+
+## Path Parameters
+
+<ParamField path="id" type="number" required>
+  The unique ID of the scrap record to delete
+</ParamField>
+
+## Request Example
+
+<CodeGroup>
+```bash cURL
+curl -X DELETE http://localhost:3001/api/scrap/1234 \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+```javascript JavaScript
+const deleteScrap = async (id) => {
+  const response = await fetch(`http://localhost:3001/api/scrap/${id}`, {
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Bearer ${getToken()}`
+    }
+  });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to delete record');
+  }
+  
+  return await response.json();
+};
+
+// Usage with confirmation
+const handleDelete = async (recordId) => {
+  if (confirm('¿Está seguro de eliminar este registro?')) {
+    try {
+      await deleteScrap(recordId);
+      alert('Registro eliminado exitosamente');
+      // Refresh data
+    } catch (error) {
+      alert(`Error: ${error.message}`);
+    }
+  }
+};
+```
+
+```typescript TypeScript
+interface DeleteResponse {
+  success: boolean;
+}
+
+const deleteScrap = async (id: number): Promise<DeleteResponse> => {
+  const response = await fetch(
+    `http://localhost:3001/api/scrap/${id}`,
+    {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${getToken()}`
+      }
+    }
+  );
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to delete record');
+  }
+  
+  return await response.json();
+};
+
+// Usage with error handling
+try {
+  const result = await deleteScrap(1234);
+  if (result.success) {
+    console.log('Record deleted successfully');
+  }
+} catch (error) {
+  console.error('Delete failed:', error);
+}
+```
+</CodeGroup>
+
+## Response
+
+<ResponseField name="success" type="boolean">
+  Indicates if the deletion was successful
+</ResponseField>
+
+### Success Response (200 OK)
+
+```json
+{
+  "success": true
+}
+```
+
+## Error Responses
+
+### 401 Unauthorized
+
+Missing or invalid authentication token:
+
+```json
+{
+  "error": "Token requerido"
+}
+```
+
+### 403 Forbidden
+
+User doesn't have permission to delete records:
+
+```json
+{
+  "error": "Sin permisos suficientes"
+}
+```
+
+### 404 Not Found
+
+Record with specified ID doesn't exist:
+
+```json
+{
+  "error": "Registro no encontrado"
+}
+```
+
+### 500 Internal Server Error
+
+Database or server error:
+
+```json
+{
+  "error": "Database update failed"
+}
+```
+
+## Permission Requirements
+
+<CardGroup cols={2}>
+  <Card title="Operador" icon="user">
+    ❌ Cannot delete records
+  </Card>
+  
+  <Card title="Supervisor" icon="user-tie">
+    ❌ Cannot delete records
+  </Card>
+  
+  <Card title="Calidad" icon="shield-check">
+    ✅ Can delete any record
+  </Card>
+  
+  <Card title="Admin" icon="crown">
+    ✅ Can delete any record
+  </Card>
+</CardGroup>
+
+## Soft Delete Implementation
+
+The delete operation executes the following SQL:
+
+```sql
+UPDATE pesaje 
+SET ELIMINADO = 1 
+WHERE ID = ?;
+```
+
+<Note>
+  Deleted records are automatically excluded from:
+  - List queries (`GET /api/scrap`)
+  - Reports and statistics
+  - Dashboard aggregations
+  - Tolerance calculations
+</Note>
+
+## Audit Trail
+
+<Note>
+  Deletions are logged in the `auditoria` table with:
+  - **Action:** `'eliminar'`
+  - **Entity:** `'pesaje'`
+  - **Entity ID:** Record ID
+  - **User ID:** ID of user performing the deletion
+  - **Changes:** JSON object with deletion timestamp
+</Note>
+
+## Restoring Deleted Records
+
+Deleted records can be restored by administrators using a direct database update:
+
+```sql
+UPDATE pesaje 
+SET ELIMINADO = 0 
+WHERE ID = ? AND ELIMINADO = 1;
+```
+
+<Warning>
+  There is no built-in API endpoint for restoring deleted records. Restoration requires direct database access and should be performed carefully.
+</Warning>
+
+## Bulk Delete Example
+
+```typescript
+const bulkDeleteScrap = async (ids: number[]): Promise<{ 
+  success: number;
+  failed: number;
+  errors: string[];
+}> => {
+  const results = {
+    success: 0,
+    failed: 0,
+    errors: [] as string[]
+  };
+  
+  for (const id of ids) {
+    try {
+      await deleteScrap(id);
+      results.success++;
+    } catch (error) {
+      results.failed++;
+      results.errors.push(`ID ${id}: ${error.message}`);
+    }
+  }
+  
+  return results;
+};
+
+// Usage
+const result = await bulkDeleteScrap([101, 102, 103]);
+console.log(`Deleted: ${result.success}, Failed: ${result.failed}`);
+```
+
+## Best Practices
+
+<Warning>
+  **User Confirmation:** Always require user confirmation before deleting records to prevent accidental data loss.
+</Warning>
+
+<Note>
+  **Audit Trail:** The system automatically logs all deletions. Review the audit log regularly to monitor data integrity.
+</Note>
+
+<Note>
+  **Permission Checks:** Implement client-side permission checks to hide delete buttons from users without appropriate roles.
+</Note>
+
+## Implementation Example
+
+```typescript
+// Delete button with permission check
+const DeleteButton = ({ recordId, userRole }: Props) => {
+  const canDelete = ['admin', 'calidad'].includes(userRole);
+  
+  if (!canDelete) return null;
+  
+  const handleDelete = async () => {
+    const confirmed = window.confirm(
+      '¿Está seguro de que desea eliminar este registro?\n\n' +
+      'Esta acción se puede revertir solo por un administrador.'
+    );
+    
+    if (!confirmed) return;
+    
+    try {
+      await deleteScrap(recordId);
+      toast.success('Registro eliminado exitosamente');
+      onRefresh();
+    } catch (error) {
+      toast.error(`Error al eliminar: ${error.message}`);
+    }
+  };
+  
+  return (
+    <button 
+      onClick={handleDelete}
+      className="btn-danger"
+    >
+      Eliminar
+    </button>
+  );
+};
+```
+
+## Related Endpoints
+
+- [Update Scrap Record](/api/scrap/update) - Modify existing record
+- [List Scrap Records](/api/scrap/list) - View active records
+- [Audit Log](/api/admin/audit) - View deletion history

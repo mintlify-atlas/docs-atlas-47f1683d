@@ -1,0 +1,365 @@
+---
+title: 'Tolerance Management'
+api: 'GET /api/tolerances'
+description: 'Configure acceptable scrap limits and alerts'
+---
+
+## Overview
+
+Manage tolerance limits for scrap quantity and cost. Tolerances define acceptable scrap levels and trigger alerts when exceeded.
+
+<Note>
+  Tolerances can be set globally or for specific targets (area, chain, line, category) with different time periods (daily, weekly, monthly).
+</Note>
+
+## Authentication
+
+Requires valid JWT token. Creating and editing requires `admin` or `calidad` role.
+
+```
+Authorization: Bearer <token>
+```
+
+## Endpoints
+
+### List All Tolerances
+
+<CodeGroup>
+```bash GET - All
+curl -X GET http://localhost:3001/api/tolerances \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+```bash GET - Filtered
+curl -X GET "http://localhost:3001/api/tolerances?tipo_objetivo=area&activo=1" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+```javascript JavaScript
+const getTolerances = async (filters = {}) => {
+  const params = new URLSearchParams(filters);
+  const response = await fetch(
+    `http://localhost:3001/api/tolerances?${params}`,
+    {
+      headers: { 'Authorization': `Bearer ${getToken()}` }
+    }
+  );
+  return await response.json();
+};
+
+// Get all tolerances
+const all = await getTolerances();
+
+// Get area-specific tolerances
+const areaTolerances = await getTolerances({ tipo_objetivo: 'area' });
+```
+</CodeGroup>
+
+### Get Tolerance by ID
+
+```bash
+curl -X GET http://localhost:3001/api/tolerances/1 \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+### Create Tolerance
+
+<CodeGroup>
+```bash POST
+curl -X POST http://localhost:3001/api/tolerances \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "nombre": "Límite Mensual Ensamble",
+    "tipo_objetivo": "area",
+    "objetivo_id": "Ensamble",
+    "tipo_periodo": "mensual",
+    "cantidad_max": 10000,
+    "costo_max": 25000,
+    "porcentaje_alerta": 80
+  }'
+```
+
+```javascript JavaScript
+const createTolerance = async (data) => {
+  const response = await fetch('http://localhost:3001/api/tolerances', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${getToken()}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(data)
+  });
+  return await response.json();
+};
+```
+</CodeGroup>
+
+### Update Tolerance
+
+```bash
+curl -X PUT http://localhost:3001/api/tolerances/1 \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"cantidad_max": 12000, "costo_max": 30000}'
+```
+
+### Delete Tolerance
+
+```bash
+curl -X DELETE http://localhost:3001/api/tolerances/1 \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+### Get Tolerance Status
+
+<Note>
+  This endpoint calculates current usage vs. limits for all active tolerances.
+</Note>
+
+```bash
+curl -X GET http://localhost:3001/api/tolerances/status/all \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+## Data Structure
+
+<ResponseField name="id" type="number">
+  Unique tolerance identifier
+</ResponseField>
+
+<ResponseField name="nombre" type="string" required>
+  Tolerance name/description
+</ResponseField>
+
+<ResponseField name="tipo_objetivo" type="string" required>
+  Target type: `global`, `cadena`, `linea`, `area`, `categoria`
+</ResponseField>
+
+<ResponseField name="objetivo_id" type="string">
+  Target identifier (e.g., area name, chain ID). NULL for global tolerances.
+</ResponseField>
+
+<ResponseField name="tipo_periodo" type="string" required>
+  Time period: `diario`, `semanal`, `mensual`
+</ResponseField>
+
+<ResponseField name="cantidad_max" type="number" default={0}>
+  Maximum acceptable quantity (pieces)
+</ResponseField>
+
+<ResponseField name="costo_max" type="number" default={0}>
+  Maximum acceptable cost (USD)
+</ResponseField>
+
+<ResponseField name="porcentaje_alerta" type="number" default={80}>
+  Alert threshold percentage (0-100)
+</ResponseField>
+
+<ResponseField name="activo" type="number">
+  Status: 1 = active, 0 = inactive
+</ResponseField>
+
+## Response Example
+
+```json
+[
+  {
+    "id": 1,
+    "nombre": "Límite Global Mensual",
+    "tipo_objetivo": "global",
+    "objetivo_id": null,
+    "tipo_periodo": "mensual",
+    "cantidad_max": 50000,
+    "costo_max": 100000,
+    "porcentaje_alerta": 80,
+    "activo": 1
+  },
+  {
+    "id": 2,
+    "nombre": "Límite Diario Ensamble",
+    "tipo_objetivo": "area",
+    "objetivo_id": "Ensamble",
+    "tipo_periodo": "diario",
+    "cantidad_max": 500,
+    "costo_max": 1200,
+    "porcentaje_alerta": 75,
+    "activo": 1
+  }
+]
+```
+
+## Tolerance Status Response
+
+```json
+[
+  {
+    "id": 2,
+    "nombre": "Límite Diario Ensamble",
+    "tipo_objetivo": "area",
+    "objetivo_id": "Ensamble",
+    "tipo_periodo": "diario",
+    "cantidad_max": 500,
+    "costo_max": 1200,
+    "porcentaje_alerta": 75,
+    "activo": 1,
+    "totalQty": 420,
+    "totalCost": 1050.50,
+    "qtyPct": 84.0,
+    "costPct": 87.5,
+    "maxPct": 87.5,
+    "status": "yellow"
+  }
+]
+```
+
+<ResponseField name="totalQty" type="number">
+  Current quantity in this period
+</ResponseField>
+
+<ResponseField name="totalCost" type="number">
+  Current cost in this period
+</ResponseField>
+
+<ResponseField name="qtyPct" type="number">
+  Percentage of quantity limit reached
+</ResponseField>
+
+<ResponseField name="costPct" type="number">
+  Percentage of cost limit reached
+</ResponseField>
+
+<ResponseField name="maxPct" type="number">
+  Maximum of qtyPct and costPct
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Status: `green` (< alert %), `yellow` (>= alert %), `red` (>= 100%)
+</ResponseField>
+
+## Dashboard Integration
+
+```typescript
+const ToleranceMonitor: React.FC = () => {
+  const [tolerances, setTolerances] = useState([]);
+  
+  useEffect(() => {
+    const fetchStatus = async () => {
+      const response = await fetch(
+        'http://localhost:3001/api/tolerances/status/all',
+        {
+          headers: { 'Authorization': `Bearer ${getToken()}` }
+        }
+      );
+      const data = await response.json();
+      setTolerances(data);
+    };
+    
+    fetchStatus();
+    const interval = setInterval(fetchStatus, 60000); // Refresh every minute
+    return () => clearInterval(interval);
+  }, []);
+  
+  return (
+    <div className="tolerance-grid">
+      {tolerances.map(t => (
+        <ToleranceCard key={t.id} tolerance={t} />
+      ))}
+    </div>
+  );
+};
+
+const ToleranceCard: React.FC<{ tolerance: any }> = ({ tolerance }) => {
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'green': return '#22c55e';
+      case 'yellow': return '#eab308';
+      case 'red': return '#ef4444';
+      default: return '#6b7280';
+    }
+  };
+  
+  return (
+    <div className="card" style={{ borderLeft: `4px solid ${getStatusColor(tolerance.status)}` }}>
+      <h3>{tolerance.nombre}</h3>
+      <p>Target: {tolerance.tipo_objetivo} - {tolerance.objetivo_id || 'Global'}</p>
+      <p>Period: {tolerance.tipo_periodo}</p>
+      
+      <div className="progress-bar">
+        <div 
+          className="progress-fill" 
+          style={{ 
+            width: `${Math.min(tolerance.maxPct, 100)}%`,
+            backgroundColor: getStatusColor(tolerance.status)
+          }}
+        />
+      </div>
+      
+      <p>{tolerance.maxPct.toFixed(1)}% of limit</p>
+      <p>Cost: ${tolerance.totalCost.toFixed(2)} / ${tolerance.costo_max}</p>
+      <p>Qty: {tolerance.totalQty} / {tolerance.cantidad_max}</p>
+    </div>
+  );
+};
+```
+
+## Alert System
+
+```javascript
+const checkToleranceAlerts = async () => {
+  const response = await fetch(
+    'http://localhost:3001/api/tolerances/status/all',
+    {
+      headers: { 'Authorization': `Bearer ${getToken()}` }
+    }
+  );
+  const tolerances = await response.json();
+  
+  const alerts = tolerances.filter(t => 
+    t.status === 'yellow' || t.status === 'red'
+  );
+  
+  if (alerts.length > 0) {
+    alerts.forEach(alert => {
+      const severity = alert.status === 'red' ? '🚨 CRITICAL' : '⚠️ WARNING';
+      console.warn(
+        `${severity}: ${alert.nombre} is at ${alert.maxPct.toFixed(1)}%`
+      );
+      
+      // Send notification
+      notifyUser({
+        title: `Tolerance Alert: ${alert.nombre}`,
+        message: `Current usage is at ${alert.maxPct.toFixed(1)}% of the limit`,
+        severity: alert.status
+      });
+    });
+  }
+  
+  return alerts;
+};
+
+// Run every 5 minutes
+setInterval(checkToleranceAlerts, 5 * 60 * 1000);
+```
+
+## TypeScript Interface
+
+```typescript
+export interface Tolerancia {
+  id: number;
+  nombre: string;
+  tipo_objetivo: 'global' | 'cadena' | 'linea' | 'area' | 'categoria';
+  objetivo_id: string;
+  tipo_periodo: 'diario' | 'semanal' | 'mensual';
+  cantidad_max: number;
+  costo_max: number;
+  porcentaje_alerta: number;
+  activo: number;
+}
+```
+
+## Related Endpoints
+
+- [Summary Report](/api/reports/summary) - View current usage
+- [By Area Report](/api/reports/by-area) - Area-specific data
+- [Audit Log](/api/admin/audit) - Track tolerance changes

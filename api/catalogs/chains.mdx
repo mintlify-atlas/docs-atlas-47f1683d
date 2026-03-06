@@ -1,0 +1,246 @@
+---
+title: 'Production Chains Catalog'
+api: 'GET /api/catalogs/cadenas'
+description: 'Manage production chains and manufacturing cells'
+---
+
+## Overview
+
+The Production Chains catalog (Cadenas) defines manufacturing chains or cells within the facility. Chains typically represent distinct production flows or product families.
+
+<Note>
+  Chains are high-level organizational units that contain multiple production lines.
+</Note>
+
+## Endpoints
+
+### List All Chains
+
+<CodeGroup>
+```bash GET - List All
+curl -X GET http://localhost:3001/api/catalogs/cadenas \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+```bash GET - Get by ID
+curl -X GET http://localhost:3001/api/catalogs/cadenas/1 \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+</CodeGroup>
+
+### Create Chain
+
+<CodeGroup>
+```bash POST
+curl -X POST http://localhost:3001/api/catalogs/cadenas \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "nombre": "GNT1",
+    "descripcion": "Cadena de arneses para General Motors",
+    "activo": 1
+  }'
+```
+
+```javascript JavaScript
+const createChain = async (chainData) => {
+  const response = await fetch('http://localhost:3001/api/catalogs/cadenas', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${getToken()}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(chainData)
+  });
+  return await response.json();
+};
+```
+</CodeGroup>
+
+### Update Chain
+
+```bash
+curl -X PUT http://localhost:3001/api/catalogs/cadenas/1 \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"descripcion": "Cadena GNT1 - GM Arneses Actualizados"}'
+```
+
+### Delete Chain (Soft)
+
+```bash
+curl -X DELETE http://localhost:3001/api/catalogs/cadenas/1 \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+## Data Structure
+
+<ResponseField name="id" type="number">
+  Unique identifier
+</ResponseField>
+
+<ResponseField name="nombre" type="string" required>
+  Chain name or code (e.g., "GNT1", "FCA2", "TOYOTA-A")
+</ResponseField>
+
+<ResponseField name="descripcion" type="string" required>
+  Detailed description of the production chain
+</ResponseField>
+
+<ResponseField name="activo" type="number">
+  Status: 1 = active, 0 = inactive
+</ResponseField>
+
+## Response Example
+
+```json
+[
+  {
+    "id": 1,
+    "nombre": "GNT1",
+    "descripcion": "Cadena de arneses para General Motors",
+    "activo": 1
+  },
+  {
+    "id": 2,
+    "nombre": "FCA2",
+    "descripcion": "Cadena de conectores para FCA",
+    "activo": 1
+  },
+  {
+    "id": 3,
+    "nombre": "TOYOTA-A",
+    "descripcion": "Cadena de arneses Toyota - Plataforma A",
+    "activo": 1
+  }
+]
+```
+
+## TypeScript Interface
+
+```typescript
+export interface Cadena {
+  id: number;
+  nombre: string;
+  descripcion: string;
+  activo: number;
+}
+```
+
+## Relationship with Lines
+
+Chains contain multiple production lines:
+
+```javascript
+// Get all lines for a specific chain
+const getLinesByChain = (chainId, linesCatalog) => {
+  return linesCatalog.filter(line => 
+    line.cadena_id === chainId && line.activo === 1
+  );
+};
+
+// Usage
+const gnt1Lines = getLinesByChain(1, lineasCatalog);
+console.log(`GNT1 has ${gnt1Lines.length} production lines`);
+```
+
+## Chain-Level Reports
+
+Generate reports aggregated by production chain:
+
+```javascript
+const getChainReport = async (startDate, endDate) => {
+  const response = await fetch(
+    `http://localhost:3001/api/reports/by-cadena?` +
+    `fecha_inicio=${startDate}&fecha_fin=${endDate}`,
+    {
+      headers: { 'Authorization': `Bearer ${getToken()}` }
+    }
+  );
+  return await response.json();
+};
+
+// Get scrap data for specific chain
+const getChainScrap = async (chainName, startDate, endDate) => {
+  const response = await fetch(
+    `http://localhost:3001/api/scrap?` +
+    `cadena=${chainName}&desde=${startDate}&hasta=${endDate}`,
+    {
+      headers: { 'Authorization': `Bearer ${getToken()}` }
+    }
+  );
+  return await response.json();
+};
+```
+
+## Hierarchical Navigation
+
+Implement cascading dropdowns for chain → line selection:
+
+```typescript
+interface ChainLineSelector {
+  selectedChain: Cadena | null;
+  availableLines: Linea[];
+}
+
+const ChainLineSelector: React.FC = () => {
+  const [selectedChain, setSelectedChain] = useState<Cadena | null>(null);
+  const [availableLines, setAvailableLines] = useState<Linea[]>([]);
+  
+  useEffect(() => {
+    if (selectedChain) {
+      const lines = getLinesByChain(selectedChain.id, lineasCatalog);
+      setAvailableLines(lines);
+    } else {
+      setAvailableLines([]);
+    }
+  }, [selectedChain]);
+  
+  return (
+    <>
+      <select onChange={e => setSelectedChain(chains[e.target.value])}>
+        <option value="">Seleccionar cadena...</option>
+        {chains.map(chain => (
+          <option key={chain.id} value={chain.id}>{chain.nombre}</option>
+        ))}
+      </select>
+      
+      {availableLines.length > 0 && (
+        <select>
+          <option value="">Seleccionar línea...</option>
+          {availableLines.map(line => (
+            <option key={line.id} value={line.id}>{line.nombre}</option>
+          ))}
+        </select>
+      )}
+    </>
+  );
+};
+```
+
+## Permissions
+
+<CardGroup cols={2}>
+  <Card title="View" icon="eye">
+    All authenticated users
+  </Card>
+  <Card title="Create/Edit" icon="pencil">
+    `admin`, `calidad` roles only
+  </Card>
+</CardGroup>
+
+## Best Practices
+
+<Note>
+  **Naming Convention:** Use customer/project codes for chain names (GNT1, FCA2) for easy identification.
+</Note>
+
+<Note>
+  **Hierarchy:** Plan your organizational hierarchy: Facility → Chains → Lines → Areas
+</Note>
+
+## Related Endpoints
+
+- [Lines Catalog](/api/catalogs/lines) - Production lines within chains
+- [Chain Report](/api/reports/by-category) - Scrap by chain
+- [Create Scrap Record](/api/scrap/create) - Register scrap for a chain

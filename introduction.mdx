@@ -1,0 +1,138 @@
+---
+title: "Introduction"
+description: "Manufacturing scrap tracking and analytics system for APTIV production lines"
+---
+
+## Welcome to APTIV Scrap Control
+
+APTIV Scrap Control is a comprehensive manufacturing waste management system designed specifically for APTIV production lines. Track, monitor, and analyze scrap in real-time to improve quality and reduce costs.
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Get up and running in 5 minutes
+  </Card>
+  <Card title="Installation Guide" icon="download" href="/installation">
+    Deploy standalone or with Docker
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/auth/login">
+    Explore the REST API
+  </Card>
+  <Card title="User Management" icon="users" href="/user-management/roles-permissions">
+    Configure roles and permissions
+  </Card>
+</CardGroup>
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Real-time Tracking" icon="chart-line">
+    Monitor scrap as it happens with barcode scanner support and automatic data capture
+  </Card>
+  <Card title="Role-Based Access" icon="shield">
+    4-tier permission system: Admin, Quality, Supervisor, and Operator roles
+  </Card>
+  <Card title="Interactive Dashboard" icon="gauge">
+    Visualize metrics with charts, KPIs, and trend analysis across shifts and production lines
+  </Card>
+  <Card title="Tolerance Alerts" icon="bell">
+    Set configurable thresholds and receive alerts when scrap exceeds acceptable limits
+  </Card>
+  <Card title="Comprehensive Reports" icon="file-chart-column">
+    Generate reports by area, shift, category, and production line with CSV export
+  </Card>
+  <Card title="Offline-First" icon="wifi-slash">
+    Works without backend using localStorage, with optional MySQL synchronization
+  </Card>
+</CardGroup>
+
+## Technology Stack
+
+<Tabs>
+  <Tab title="Frontend">
+    - **React 19** with Vite for fast builds
+    - **Tailwind CSS v4** for modern styling
+    - **Recharts** for data visualization
+    - **jsPDF** for report generation
+    - **Lucide Icons** for consistent UI
+  </Tab>
+  <Tab title="Backend">
+    - **Node.js** with Express framework
+    - **MySQL 8** for data persistence
+    - **JWT** authentication
+    - **bcrypt** for password hashing
+    - RESTful API architecture
+  </Tab>
+  <Tab title="Deployment">
+    - **Docker Compose** orchestration
+    - **Nginx** for frontend serving
+    - Health checks and auto-restart
+    - Volume persistence for MySQL data
+  </Tab>
+</Tabs>
+
+## Use Cases
+
+<AccordionGroup>
+  <Accordion title="Production Line Monitoring">
+    Track scrap generation across multiple production lines in real-time. Identify problem areas and take corrective action before costs escalate.
+  </Accordion>
+  <Accordion title="Quality Control Analysis">
+    Analyze failure modes and categorize defects. Generate reports for quality teams to identify systemic issues and improve processes.
+  </Accordion>
+  <Accordion title="Shift Performance Comparison">
+    Compare scrap rates across different shifts to identify training opportunities and best practices. Track supervisor performance metrics.
+  </Accordion>
+  <Accordion title="Cost Reduction Initiatives">
+    Monitor scrap costs in real-time. Set tolerance thresholds and receive alerts when waste exceeds acceptable levels.
+  </Accordion>
+  <Accordion title="Compliance and Auditing">
+    Maintain complete audit logs of all scrap entries, edits, and deletions. Generate compliance reports for regulatory requirements.
+  </Accordion>
+</AccordionGroup>
+
+## Quick Example
+
+Here's how operators register scrap entries:
+
+```typescript
+// Scrap registration with barcode scanner
+const scrapEntry = {
+  AREA: "Harness Assembly",
+  NP: "12345678",
+  MATERIAL: "Wire Connector",
+  PESO: 2.5,
+  COSTO: 15.75,
+  CADENA: "Cadena 1",
+  TURNO: "1st Shift",
+  TIPO: "Defecto",
+  SUPERVISOR: "Juan Pérez",
+  TOTAL_PZAS: "10",
+  MODO_FALLA: "Conector dañado",
+  COMENTARIOS: "Material defectuoso del proveedor"
+};
+
+// POST to API
+await fetch('/api/scrap', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`
+  },
+  body: JSON.stringify(scrapEntry)
+});
+```
+
+<Note>
+  The system automatically populates part details when scanning barcodes, reducing data entry time by 80%.
+</Note>
+
+## Getting Help
+
+<CardGroup cols={2}>
+  <Card title="View on GitHub" icon="github" href="https://github.com/bennycastro/scrap">
+    Source code and issue tracker
+  </Card>
+  <Card title="Deployment Guide" icon="docker" href="/deployment/docker">
+    Production deployment with Docker
+  </Card>
+</CardGroup>

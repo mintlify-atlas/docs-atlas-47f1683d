@@ -1,0 +1,617 @@
+---
+title: Tolerance Management
+description: Configure acceptable scrap limits with alerts and visual monitoring
+icon: 'ruler'
+---
+
+The Tolerance Management module allows quality engineers and administrators to define acceptable scrap thresholds. When limits are exceeded, visual alerts appear on the dashboard to trigger corrective actions.
+
+## Overview
+
+Tolerances define the maximum acceptable quantity and cost of scrap for a specific target (global, area, chain, line, or category) over a time period (daily, weekly, or monthly).
+
+<CardGroup cols={2}>
+  <Card title="Multi-Level Targets" icon="crosshairs">
+    Set limits globally or for specific areas, chains, lines, or categories
+  </Card>
+  <Card title="Flexible Periods" icon="calendar">
+    Configure daily, weekly, or monthly monitoring windows
+  </Card>
+  <Card title="Dual Thresholds" icon="scale-balanced">
+    Track both quantity (pieces) and cost (USD) limits
+  </Card>
+  <Card title="Progressive Alerts" icon="traffic-light">
+    Green → Yellow → Red status based on percentage consumed
+  </Card>
+</CardGroup>
+
+## Tolerance Structure
+
+Each tolerance is defined by:
+
+```typescript
+// From types.ts:119-129
+export interface Tolerancia {
+  id: number;
+  nombre: string;                    // Descriptive name
+  tipo_objetivo: 'global' | 'cadena' | 'linea' | 'area' | 'categoria';
+  objetivo_id: string;               // Target identifier (e.g., "Assembly" for area)
+  tipo_periodo: 'diario' | 'semanal' | 'mensual';
+  cantidad_max: number;              // Maximum quantity (pieces)
+  costo_max: number;                 // Maximum cost (USD)
+  porcentaje_alerta: number;         // Alert threshold percentage (e.g., 80)
+  activo: number;                    // Active flag (0/1)
+}
+```
+
+<Note>
+  **Example Tolerance:**
+  
+  ```json
+  {
+    "nombre": "Assembly Area Daily Limit",
+    "tipo_objetivo": "area",
+    "objetivo_id": "Assembly",
+    "tipo_periodo": "diario",
+    "cantidad_max": 500,
+    "costo_max": 1500,
+    "porcentaje_alerta": 80,
+    "activo": 1
+  }
+  ```
+  
+  This tolerance alerts when Assembly area exceeds 400 pieces (80% of 500) or $1200 (80% of $1500) in a single day.
+</Note>
+
+## Tolerance Types
+
+<Tabs>
+  <Tab title="Global">
+    **Target**: Entire operation
+    
+    **Use Case**: Company-wide scrap reduction goals
+    
+    **Example**: "Total scrap must not exceed 5000 pieces/month"
+    
+    ```tsx
+    // From TolerancesPage.tsx:108
+    if (t.tipo_objetivo === 'area') rr = rr.filter(p => p.AREA === t.objetivo_id);
+    ```
+    
+    No filtering applied — all records counted.
+  </Tab>
+  
+  <Tab title="Area">
+    **Target**: Specific production area
+    
+    **Use Case**: Department-level accountability
+    
+    **Example**: "Paint area: max 300 pieces/day"
+    
+    ```tsx
+    // From TolerancesPage.tsx:30
+    if (t.tipo_objetivo === 'area') recs = recs.filter(p => p.AREA === t.objetivo_id);
+    ```
+    
+    Only scrap from the specified area is counted.
+  </Tab>
+  
+  <Tab title="Chain">
+    **Target**: Production chain/line
+    
+    **Use Case**: Track assembly line performance
+    
+    **Example**: "Chain A: max $500/week"
+    
+    ```tsx
+    // From TolerancesPage.tsx:31
+    else if (t.tipo_objetivo === 'cadena') recs = recs.filter(p => p.CADENA === t.objetivo_id);
+    ```
+    
+    Filters by `CADENA` field.
+  </Tab>
+  
+  <Tab title="Line">
+    **Target**: Individual production line
+    
+    **Use Case**: Granular line-level tracking
+    
+    **Example**: "Line 3: max 100 pieces/shift"
+    
+    ```tsx
+    // From TolerancesPage.tsx:33
+    else if (t.tipo_objetivo === 'linea') recs = recs.filter(p => p.LINEA === t.objetivo_id);
+    ```
+    
+    Filters by `LINEA` field.
+  </Tab>
+  
+  <Tab title="Category">
+    **Target**: Scrap category
+    
+    **Use Case**: Focus on specific defect types
+    
+    **Example**: "Material defects: max $2000/month"
+    
+    ```tsx
+    // From TolerancesPage.tsx:32
+    else if (t.tipo_objetivo === 'categoria') recs = recs.filter(p => p.CATEGORIA === t.objetivo_id);
+    ```
+    
+    Filters by `CATEGORIA` field.
+  </Tab>
+</Tabs>
+
+## Time Periods
+
+Tolerances can monitor daily, weekly, or monthly windows:
+
+### Daily Tolerance
+
+```tsx
+// From TolerancesPage.tsx:35
+if (t.tipo_periodo === 'diario') 
+  recs = recs.filter(p => isWithinInterval(new Date(p.FECHA_REGISTRO), { 
+    start: startOfDay(now), 
+    end: endOfDay(now) 
+  }));
+```
+
+- **Window**: Midnight to midnight
+- **Reset**: Automatically at 00:00
+- **Use**: Short-cycle production
+
+### Weekly Tolerance
+
+```tsx
+// From TolerancesPage.tsx:36
+else if (t.tipo_periodo === 'semanal') 
+  recs = recs.filter(p => isWithinInterval(new Date(p.FECHA_REGISTRO), { 
+    start: startOfWeek(now, { weekStartsOn: 1 }), 
+    end: endOfDay(now) 
+  }));
+```
+
+- **Window**: Monday 00:00 to current time
+- **Reset**: Every Monday
+- **Use**: Weekly production planning
+
+### Monthly Tolerance
+
+```tsx
+// From TolerancesPage.tsx:37
+else { 
+  const ms = new Date(now.getFullYear(), now.getMonth(), 1); 
+  recs = recs.filter(p => new Date(p.FECHA_REGISTRO) >= ms && new Date(p.FECHA_REGISTRO) <= now);
+}
+```
+
+- **Window**: 1st of month 00:00 to current time
+- **Reset**: 1st of each month
+- **Use**: Monthly KPI tracking
+
+## Status Calculation
+
+Tolerances have three status levels based on percentage consumed:
+
+```tsx
+// From TolerancesPage.tsx:38-44
+const qty = recs.reduce((s, r) => s + Number(r.TOTAL_PZAS || 0), 0);
+const cost = recs.reduce((s, r) => s + (r.COSTO || 0), 0);
+const qPct = t.cantidad_max > 0 ? (qty / t.cantidad_max) * 100 : 0;
+const cPct = t.costo_max > 0 ? (cost / t.costo_max) * 100 : 0;
+const maxPct = Math.max(qPct, cPct);
+const status = maxPct >= 100 ? 'red' : maxPct >= t.porcentaje_alerta ? 'yellow' : 'green';
+return { qty, cost, qPct, cPct, maxPct, status };
+```
+
+### Status Levels
+
+<Steps>
+  <Step title="🟢 Green (Within Meta)">
+    **Condition**: `maxPct < porcentaje_alerta`
+    
+    **Meaning**: Scrap is below alert threshold
+    
+    **Example**: 65% of limit consumed
+    
+    **Action**: Normal operation, no concern
+  </Step>
+  
+  <Step title="🟡 Yellow (Warning)">
+    **Condition**: `porcentaje_alerta <= maxPct < 100`
+    
+    **Meaning**: Approaching limit
+    
+    **Example**: 85% of limit consumed (alert set at 80%)
+    
+    **Action**: Review processes, prepare corrective action
+  </Step>
+  
+  <Step title="🔴 Red (Exceeded)">
+    **Condition**: `maxPct >= 100`
+    
+    **Meaning**: Limit has been exceeded
+    
+    **Example**: 110% of limit consumed
+    
+    **Action**: Immediate investigation, 8D report, CAPA
+    
+    <Warning>
+      Red status triggers animated pulse effect to grab attention.
+    </Warning>
+  </Step>
+</Steps>
+
+### Dual-Threshold Logic
+
+The status uses the **higher** of quantity or cost percentage:
+
+```tsx
+const maxPct = Math.max(qPct, cPct);
+```
+
+**Example Scenario:**
+- Quantity: 400 / 500 = 80% ✅
+- Cost: $1400 / $1500 = 93% ⚠️
+- **Overall Status**: 🟡 Yellow (93% is higher)
+
+<Note>
+  This ensures alerts trigger if **either** quantity or cost exceeds the threshold, providing comprehensive monitoring.
+</Note>
+
+## Tolerance Configuration
+
+<Steps>
+  <Step title="Navigate to Tolerances">
+    Click **Pérdida Tolerable** in the admin menu (requires `manage_tolerances` permission).
+  </Step>
+  
+  <Step title="Click 'Nueva Tolerancia'">
+    The configuration modal appears with the following fields:
+    
+    ```tsx
+    // From TolerancesPage.tsx:157-226
+    <form>
+      <input name="nombre" placeholder="Tolerance name" />
+      <select name="tipo_objetivo">
+        <option value="global">Global</option>
+        <option value="cadena">Por Cadena</option>
+        <option value="linea">Por Línea</option>
+        <option value="area">Por Área</option>
+        <option value="categoria">Por Categoría</option>
+      </select>
+      <select name="tipo_periodo">
+        <option value="diario">Diario</option>
+        <option value="semanal">Semanal</option>
+        <option value="mensual">Mensual</option>
+      </select>
+      <select name="objetivo_id">{/* Dynamic options */}</select>
+      <input name="cantidad_max" type="number" placeholder="Max quantity" />
+      <input name="costo_max" type="number" placeholder="Max cost $" />
+      <input name="porcentaje_alerta" type="number" placeholder="Alert %" />
+    </form>
+    ```
+  </Step>
+  
+  <Step title="Fill Configuration">
+    **Example Configuration:**
+    - **Name**: "Assembly Area Weekly Limit"
+    - **Target Type**: Por Área
+    - **Target**: Assembly (dropdown auto-populates with active areas)
+    - **Period**: Semanal
+    - **Max Quantity**: 2000 pieces
+    - **Max Cost**: $5000 USD
+    - **Alert %**: 80
+  </Step>
+  
+  <Step title="Save">
+    Click **Guardar**. The tolerance immediately becomes active and starts monitoring.
+    
+    ```tsx
+    // From TolerancesPage.tsx:56-60
+    const handleSave = (t: Tolerancia) => {
+      if (editItem) store.updateItem('tolerancias', t.id, t as unknown as Record<string, unknown>);
+      else store.addItem('tolerancias', { ...t, id: 0 } as unknown as Record<string, unknown>);
+      setShowModal(false); setEditItem(null);
+    };
+    ```
+  </Step>
+</Steps>
+
+## Tolerance Display
+
+Tolerances appear in two places:
+
+### 1. Tolerances Page
+
+```tsx
+// From TolerancesPage.tsx:104-150
+{filtered.map(t => {
+  const s = getStatus(t);
+  return (
+    <div key={t.id} style={cardStyle}>
+      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+        <div>
+          <h3>{t.nombre}</h3>
+          <p>{t.tipo_periodo} | {t.objetivo_id || 'Global'} | Alerta al {t.porcentaje_alerta}%</p>
+        </div>
+        <span style={{ color: statusColor(s.status) }}>
+          {s.status === 'green' ? '🟢 Dentro de meta' : s.status === 'yellow' ? '🟡 Advertencia' : '🔴 Excedido'}
+        </span>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+        {/* Quantity bar */}
+        <div>
+          <span>Cantidad: {s.qty} / {t.cantidad_max} pzas</span>
+          <div style={{ width: '100%', height: '12px', background: 'var(--border-color)' }}>
+            <div style={{ width: `${Math.min(s.qPct, 100)}%`, background: statusColor(s.status) }} />
+          </div>
+        </div>
+        {/* Cost bar */}
+        <div>
+          <span>Costo: ${s.cost.toFixed(0)} / ${t.costo_max} USD</span>
+          <div style={{ width: '100%', height: '12px', background: 'var(--border-color)' }}>
+            <div style={{ width: `${Math.min(s.cPct, 100)}%`, background: statusColor(s.status) }} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+})}
+```
+
+**Features:**
+- Grouped by tabs (Global, Cadena, Línea, Área, Categoría)
+- Progress bars for quantity and cost
+- Status badge with color coding
+- Edit/Delete buttons
+
+### 2. Dashboard Widget
+
+```tsx
+// From Dashboard.tsx:154-190
+{toleranceStatus.length > 0 && (
+  <div style={cardStyle}>
+    <h3>Estado de Tolerancias</h3>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '12px' }}>
+      {toleranceStatus.map(t => (
+        <div key={t.id}>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span>{t.nombre}</span>
+            <span style={{ color: statusColor(t.status) }}>
+              {t.status === 'green' ? '🟢 OK' : t.status === 'yellow' ? '🟡 Alerta' : '🔴 Excedido'}
+            </span>
+          </div>
+          <div style={{ width: '100%', height: '8px', background: 'var(--border-color)' }}>
+            <div className={t.status === 'red' ? 'animate-pulse-red' : ''} style={{ width: `${Math.min(t.maxPct, 100)}%`, background: statusColor(t.status) }} />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span>{t.totalQty}/{t.cantidad_max} pzas</span>
+            <span>${t.totalCost.toFixed(0)}/${t.costo_max} USD</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+)}
+```
+
+**Features:**
+- Compact card layout
+- Responsive grid (auto-fit)
+- Animated pulse on exceeded status
+- Quick at-a-glance monitoring
+
+## Summary Statistics
+
+The Tolerances page displays an overview:
+
+```tsx
+// From TolerancesPage.tsx:48-53
+const summary = useMemo(() => {
+  const all = state.tolerancias.filter(t => t.activo);
+  let inMeta = 0, inWarn = 0, exceeded = 0;
+  all.forEach(t => { 
+    const s = getStatus(t); 
+    if (s.status === 'green') inMeta++; 
+    else if (s.status === 'yellow') inWarn++; 
+    else exceeded++;
+  });
+  return { total: all.length, inMeta, inWarn, exceeded };
+}, [state.tolerancias, pesajes]);
+```
+
+<CardGroup cols={4}>
+  <Card title="Total Configured" icon="list-check" color="var(--text-primary)">
+    Number of active tolerances
+  </Card>
+  <Card title="Within Meta" icon="circle-check" color="#22c55e">
+    Count of green tolerances
+  </Card>
+  <Card title="In Warning" icon="triangle-exclamation" color="#eab308">
+    Count of yellow tolerances
+  </Card>
+  <Card title="Exceeded" icon="circle-xmark" color="#ef4444">
+    Count of red tolerances — requires immediate action
+  </Card>
+</CardGroup>
+
+## Edit & Delete
+
+<Tabs>
+  <Tab title="Edit Tolerance">
+    1. Click the **Edit** (pencil) icon on a tolerance card
+    2. Modal opens with pre-filled values
+    3. Modify any field
+    4. Click **Guardar**
+    
+    ```tsx
+    // From TolerancesPage.tsx:124
+    <button onClick={() => { setEditItem(t); setShowModal(true); }}>
+      <Edit3 size={16} />
+    </button>
+    ```
+    
+    <Note>
+      Changes take effect immediately. The status recalculates with current data.
+    </Note>
+  </Tab>
+  
+  <Tab title="Delete Tolerance">
+    1. Click the **Delete** (trash) icon
+    2. Confirm deletion prompt
+    3. Tolerance is removed from configuration
+    
+    ```tsx
+    // From TolerancesPage.tsx:55
+    const handleDelete = (id: number) => { 
+      if (confirm('¿Eliminar?')) 
+        store.setCollection('tolerancias', state.tolerancias.filter(t => t.id !== id));
+    };
+    ```
+    
+    <Warning>
+      Deletion is permanent. The tolerance will no longer appear on the dashboard or in reports.
+    </Warning>
+  </Tab>
+</Tabs>
+
+## Dynamic Target Selection
+
+The "Objetivo" dropdown dynamically populates based on target type:
+
+```tsx
+// From TolerancesPage.tsx:161-169
+const objetivoOptions = () => {
+  switch (form.tipo_objetivo) {
+    case 'cadena': return state.cadenas.filter(c => c.activo).map(c => c.nombre);
+    case 'linea': return state.lineas.filter(l => l.activo).map(l => l.nombre);
+    case 'area': return state.areas.filter(a => a.activo).map(a => a.AREA);
+    case 'categoria': return state.categorias.filter(c => c.activo).map(c => c.nombre);
+    default: return [];
+  }
+};
+```
+
+**Example Flow:**
+1. Select "Por Área" → Dropdown shows: Assembly, Paint, Welding, etc.
+2. Select "Por Categoría" → Dropdown shows: Material, Process, Quality, etc.
+3. Select "Global" → No dropdown (applies to all)
+
+## Permissions
+
+Only users with `manage_tolerances` permission can access:
+
+```tsx
+// From TolerancesPage.tsx:23
+if (!can('manage_tolerances')) 
+  return <div>Sin permisos.</div>;
+```
+
+**Default Roles:**
+- ❌ **Operator** — No access
+- ❌ **Supervisor** — No access
+- ✅ **Quality** — Can configure tolerances
+- ✅ **Admin** — Full access
+
+<Note>
+  All users can **view** tolerance status on the dashboard, but only Quality/Admin can configure them.
+</Note>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Setting Realistic Limits">
+    - Analyze historical data (3-6 months)
+    - Set quantity max at 80th percentile of historical highs
+    - Set cost max based on budget allocation
+    - Start with 80% alert threshold, adjust based on team response
+  </Accordion>
+  
+  <Accordion title="Choosing Time Periods">
+    - **Daily**: Fast-paced production, high-volume lines
+    - **Weekly**: Standard manufacturing cycles
+    - **Monthly**: Strategic planning, budgeting
+    
+    Avoid overly short periods (causes alert fatigue) or too long (delays corrective action).
+  </Accordion>
+  
+  <Accordion title="Granularity Strategy">
+    Start broad, then narrow:
+    1. Set global monthly tolerance
+    2. Add area-level weekly tolerances
+    3. Add problematic line daily tolerances
+    4. Add category-specific limits for high-cost defects
+    
+    Too many tolerances = alert fatigue.
+  </Accordion>
+  
+  <Accordion title="Alert Threshold Tuning">
+    **Common values:**
+    - 70% — Very aggressive, early warning
+    - 80% — Standard, balanced approach
+    - 90% — Conservative, late warning
+    
+    Adjust based on:
+    - Team response time
+    - Corrective action effectiveness
+    - Historical alert accuracy
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Tolerance always shows red">
+    **Causes:**
+    1. Max limits set too low (unrealistic targets)
+    2. Historical data skews calculation
+    3. Wrong target selected (e.g., filtering by wrong area)
+    
+    **Solution:**
+    - Review last period's actual scrap
+    - Increase max quantity/cost
+    - Verify target ID matches intended area/chain
+  </Accordion>
+  
+  <Accordion title="Tolerance not appearing on dashboard">
+    **Causes:**
+    1. `activo` flag is 0 (inactive)
+    2. Target type mismatch (e.g., selected area that doesn't exist)
+    3. No scrap data matches the filter
+    
+    **Solution:**
+    - Check tolerance is marked active
+    - Verify target ID exists in catalog
+    - Register some scrap to test
+  </Accordion>
+  
+  <Accordion title="Percentage seems incorrect">
+    **Check:**
+    - Both quantity AND cost are tracked — status uses the higher percentage
+    - Time period window (daily resets at midnight, weekly on Monday)
+    - Soft-deleted records are excluded (`ELIMINADO = 1`)
+    
+    **Debug:**
+    ```tsx
+    console.log('Quantity:', s.qty, '/', t.cantidad_max, '=', s.qPct + '%');
+    console.log('Cost:', s.cost, '/', t.costo_max, '=', s.cPct + '%');
+    console.log('Max:', s.maxPct, '→', s.status);
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Related Pages
+
+<CardGroup cols={3}>
+  <Card title="Dashboard" icon="chart-line" href="/features/dashboard">
+    View live tolerance status with visual alerts
+  </Card>
+  <Card title="Reports" icon="file-chart-column" href="/features/reports">
+    Analyze scrap trends to inform tolerance limits
+  </Card>
+  <Card title="Catalog Management" icon="database" href="/configuration/catalogs">
+    Manage areas, chains, and categories used in tolerances
+  </Card>
+</CardGroup>

@@ -1,0 +1,329 @@
+---
+title: 'Create Scrap Record'
+api: 'POST /api/scrap'
+description: 'Register a new scrap entry in the system'
+---
+
+## Overview
+
+Create a new scrap record (pesaje) in the system. This endpoint automatically detects available columns in the database and only inserts supported fields.
+
+<Note>
+  All authenticated users can create scrap records. The endpoint automatically sets `FECHA_REGISTRO` to the current timestamp if not provided.
+</Note>
+
+## Authentication
+
+Requires valid JWT token in the Authorization header.
+
+```
+Authorization: Bearer <token>
+```
+
+## Request Body
+
+<ParamField body="AREA" type="string" required>
+  Production area where scrap occurred
+</ParamField>
+
+<ParamField body="NP" type="string" required>
+  Part number (número de parte)
+</ParamField>
+
+<ParamField body="MATERIAL" type="string" required>
+  Material description
+</ParamField>
+
+<ParamField body="PESO" type="number" default={0}>
+  Weight in kilograms
+</ParamField>
+
+<ParamField body="COSTO" type="number" default={0}>
+  Cost in USD
+</ParamField>
+
+<ParamField body="CADENA" type="string" required>
+  Production chain identifier
+</ParamField>
+
+<ParamField body="TURNO" type="string" required>
+  Shift: A, B, C, etc.
+</ParamField>
+
+<ParamField body="TIPO" type="string" required>
+  Scrap type
+</ParamField>
+
+<ParamField body="SUPERVISOR" type="string" required>
+  Supervisor name or badge number
+</ParamField>
+
+<ParamField body="FECHA_REGISTRO" type="string">
+  Timestamp (ISO 8601 or MySQL datetime). Defaults to current time if not provided.
+</ParamField>
+
+<ParamField body="TOTAL_PZAS" type="string" default="0">
+  Total pieces scrapped
+</ParamField>
+
+<ParamField body="MODO_FALLA" type="string" default="-">
+  Failure mode description
+</ParamField>
+
+<ParamField body="USUARIO_ID" type="number">
+  User ID who registered the scrap
+</ParamField>
+
+<ParamField body="COMENTARIOS" type="string">
+  Additional comments or notes
+</ParamField>
+
+<ParamField body="FOTO" type="string">
+  Base64 encoded photo evidence
+</ParamField>
+
+<ParamField body="CATEGORIA" type="string">
+  Scrap category
+</ParamField>
+
+<ParamField body="UNIDAD" type="string">
+  Unit of measurement
+</ParamField>
+
+<ParamField body="CADENA_ID" type="number">
+  Chain ID (foreign key)
+</ParamField>
+
+<ParamField body="LINEA_ID" type="number">
+  Line ID (foreign key)
+</ParamField>
+
+<ParamField body="LINEA" type="string">
+  Production line name
+</ParamField>
+
+## Request Example
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:3001/api/scrap \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "AREA": "Ensamble",
+    "NP": "12345678",
+    "MATERIAL": "Conector A1",
+    "PESO": 2.5,
+    "COSTO": 45.75,
+    "CADENA": "GNT1",
+    "TURNO": "A",
+    "TIPO": "Producción",
+    "SUPERVISOR": "admin",
+    "TOTAL_PZAS": "150",
+    "MODO_FALLA": "Defecto de moldeo",
+    "USUARIO_ID": 1,
+    "COMENTARIOS": "Lote defectuoso detectado en inspección",
+    "CATEGORIA": "Moldeo",
+    "UNIDAD": "kg"
+  }'
+```
+
+```javascript JavaScript
+const createScrap = async (data) => {
+  const response = await fetch('http://localhost:3001/api/scrap', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${getToken()}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      AREA: 'Ensamble',
+      NP: '12345678',
+      MATERIAL: 'Conector A1',
+      PESO: 2.5,
+      COSTO: 45.75,
+      CADENA: 'GNT1',
+      TURNO: 'A',
+      TIPO: 'Producción',
+      SUPERVISOR: 'admin',
+      TOTAL_PZAS: '150',
+      MODO_FALLA: 'Defecto de moldeo',
+      USUARIO_ID: 1,
+      COMENTARIOS: 'Lote defectuoso detectado en inspección',
+      CATEGORIA: 'Moldeo',
+      UNIDAD: 'kg'
+    })
+  });
+  
+  return await response.json();
+};
+```
+
+```typescript TypeScript
+import { Pesaje } from './types';
+
+interface CreateScrapRequest {
+  AREA: string;
+  NP: string;
+  MATERIAL: string;
+  PESO?: number;
+  COSTO?: number;
+  CADENA: string;
+  TURNO: string;
+  TIPO: string;
+  SUPERVISOR: string;
+  FECHA_REGISTRO?: string;
+  TOTAL_PZAS?: string;
+  MODO_FALLA?: string;
+  USUARIO_ID?: number;
+  COMENTARIOS?: string;
+  FOTO?: string;
+  CATEGORIA?: string;
+  UNIDAD?: string;
+  CADENA_ID?: number;
+  LINEA_ID?: number;
+  LINEA?: string;
+}
+
+const createScrap = async (data: CreateScrapRequest): Promise<Pesaje> => {
+  const response = await fetch('http://localhost:3001/api/scrap', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${getToken()}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(data)
+  });
+  
+  if (!response.ok) {
+    throw new Error('Failed to create scrap record');
+  }
+  
+  return await response.json();
+};
+```
+</CodeGroup>
+
+## Response
+
+Returns the created scrap record with all fields including the generated ID.
+
+<ResponseField name="ID" type="number">
+  Unique identifier for the scrap record
+</ResponseField>
+
+<ResponseField name="AREA" type="string">
+  Production area
+</ResponseField>
+
+<ResponseField name="NP" type="string">
+  Part number
+</ResponseField>
+
+<ResponseField name="MATERIAL" type="string">
+  Material description
+</ResponseField>
+
+<ResponseField name="PESO" type="number">
+  Weight in kilograms
+</ResponseField>
+
+<ResponseField name="COSTO" type="number">
+  Cost in USD
+</ResponseField>
+
+<ResponseField name="CADENA" type="string">
+  Production chain
+</ResponseField>
+
+<ResponseField name="TURNO" type="string">
+  Shift identifier
+</ResponseField>
+
+<ResponseField name="FECHA_REGISTRO" type="string">
+  Timestamp when record was created
+</ResponseField>
+
+<ResponseField name="ELIMINADO" type="number">
+  Soft delete flag (0 = active, 1 = deleted)
+</ResponseField>
+
+<ResponseField name="UPDATED_AT" type="string">
+  Last update timestamp
+</ResponseField>
+
+### Success Response (201 Created)
+
+```json
+{
+  "ID": 1234,
+  "AREA": "Ensamble",
+  "NP": "12345678",
+  "MATERIAL": "Conector A1",
+  "PESO": 2.5,
+  "COSTO": 45.75,
+  "CADENA": "GNT1",
+  "TURNO": "A",
+  "TIPO": "Producción",
+  "SUPERVISOR": "admin",
+  "FECHA_REGISTRO": "2024-03-15 14:30:00",
+  "TOTAL_PZAS": "150",
+  "MODO_FALLA": "Defecto de moldeo",
+  "USUARIO_ID": 1,
+  "COMENTARIOS": "Lote defectuoso detectado en inspección",
+  "FOTO": null,
+  "ELIMINADO": 0,
+  "CATEGORIA": "Moldeo",
+  "UNIDAD": "kg",
+  "CADENA_ID": null,
+  "LINEA_ID": null,
+  "LINEA": null,
+  "UPDATED_AT": "2024-03-15 14:30:00"
+}
+```
+
+## Error Responses
+
+### 401 Unauthorized
+
+```json
+{
+  "error": "Token requerido"
+}
+```
+
+### 500 Internal Server Error
+
+Database or validation error:
+
+```json
+{
+  "error": "Column 'AREA' cannot be null",
+  "sqlMessage": "Field 'AREA' doesn't have a default value",
+  "code": "ER_NO_DEFAULT_FOR_FIELD"
+}
+```
+
+## Implementation Notes
+
+<Note>
+  **Dynamic Column Detection:** The endpoint queries the database schema to detect available columns and only inserts supported fields. This ensures backward compatibility with different database versions.
+</Note>
+
+<Note>
+  **Automatic Timestamp:** If `FECHA_REGISTRO` is not provided, it defaults to the current server time using `NOW()`.
+</Note>
+
+<Warning>
+  **Photo Size Limit:** The API has a 50MB body limit. Base64 encoded photos should be compressed before upload.
+</Warning>
+
+<Warning>
+  **Soft Delete:** Records are marked as deleted (`ELIMINADO = 1`) rather than being physically removed from the database.
+</Warning>
+
+## Related Endpoints
+
+- [List Scrap Records](/api/scrap/list) - Retrieve scrap records with filtering
+- [Update Scrap Record](/api/scrap/update) - Modify existing record
+- [Delete Scrap Record](/api/scrap/delete) - Soft delete a record

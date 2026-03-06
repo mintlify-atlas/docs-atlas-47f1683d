@@ -1,0 +1,372 @@
+---
+title: 'List Scrap Records'
+api: 'GET /api/scrap'
+description: 'Retrieve scrap records with pagination and filtering'
+---
+
+## Overview
+
+Retrieve a paginated list of scrap records with support for search, filtering, and date ranges. Only returns active records (not soft-deleted).
+
+## Authentication
+
+Requires valid JWT token in the Authorization header.
+
+```
+Authorization: Bearer <token>
+```
+
+## Query Parameters
+
+<ParamField query="limit" type="number" default={100}>
+  Maximum number of records to return (1-1000)
+</ParamField>
+
+<ParamField query="offset" type="number" default={0}>
+  Number of records to skip (for pagination)
+</ParamField>
+
+<ParamField query="search" type="string">
+  Search text to filter by NP, AREA, MATERIAL, MODO_FALLA, or SUPERVISOR (partial match)
+</ParamField>
+
+<ParamField query="area" type="string">
+  Filter by specific production area (exact match)
+</ParamField>
+
+<ParamField query="turno" type="string">
+  Filter by shift: A, B, C, etc. (exact match)
+</ParamField>
+
+<ParamField query="cadena" type="string">
+  Filter by production chain (exact match)
+</ParamField>
+
+<ParamField query="desde" type="string">
+  Start date filter (YYYY-MM-DD format)
+</ParamField>
+
+<ParamField query="hasta" type="string">
+  End date filter (YYYY-MM-DD format)
+</ParamField>
+
+## Request Example
+
+<CodeGroup>
+```bash cURL - Basic
+curl -X GET "http://localhost:3001/api/scrap?limit=50&offset=0" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+```bash cURL - With Filters
+curl -X GET "http://localhost:3001/api/scrap?area=Ensamble&turno=A&desde=2024-03-01&hasta=2024-03-31" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+```bash cURL - With Search
+curl -X GET "http://localhost:3001/api/scrap?search=conector&limit=20" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+```javascript JavaScript
+const fetchScrap = async (filters = {}) => {
+  const params = new URLSearchParams({
+    limit: filters.limit || 100,
+    offset: filters.offset || 0,
+    ...(filters.search && { search: filters.search }),
+    ...(filters.area && { area: filters.area }),
+    ...(filters.turno && { turno: filters.turno }),
+    ...(filters.cadena && { cadena: filters.cadena }),
+    ...(filters.desde && { desde: filters.desde }),
+    ...(filters.hasta && { hasta: filters.hasta })
+  });
+
+  const response = await fetch(
+    `http://localhost:3001/api/scrap?${params}`,
+    {
+      headers: {
+        'Authorization': `Bearer ${getToken()}`
+      }
+    }
+  );
+
+  return await response.json();
+};
+
+// Usage examples
+const allRecords = await fetchScrap();
+const filteredRecords = await fetchScrap({
+  area: 'Ensamble',
+  turno: 'A',
+  desde: '2024-03-01',
+  hasta: '2024-03-31',
+  limit: 50
+});
+const searchResults = await fetchScrap({ search: 'conector' });
+```
+
+```typescript TypeScript
+import { Pesaje } from './types';
+
+interface ScrapFilters {
+  limit?: number;
+  offset?: number;
+  search?: string;
+  area?: string;
+  turno?: string;
+  cadena?: string;
+  desde?: string;
+  hasta?: string;
+}
+
+interface ScrapListResponse {
+  data: Pesaje[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+const fetchScrap = async (filters: ScrapFilters = {}): Promise<ScrapListResponse> => {
+  const params = new URLSearchParams();
+  
+  params.append('limit', String(filters.limit || 100));
+  params.append('offset', String(filters.offset || 0));
+  
+  if (filters.search) params.append('search', filters.search);
+  if (filters.area) params.append('area', filters.area);
+  if (filters.turno) params.append('turno', filters.turno);
+  if (filters.cadena) params.append('cadena', filters.cadena);
+  if (filters.desde) params.append('desde', filters.desde);
+  if (filters.hasta) params.append('hasta', filters.hasta);
+
+  const response = await fetch(
+    `http://localhost:3001/api/scrap?${params}`,
+    {
+      headers: { 'Authorization': `Bearer ${getToken()}` }
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  }
+
+  return await response.json();
+};
+```
+</CodeGroup>
+
+## Response
+
+<ResponseField name="data" type="Pesaje[]">
+  Array of scrap records
+  
+  <Expandable title="Pesaje Object">
+    <ResponseField name="ID" type="number">
+      Unique record identifier
+    </ResponseField>
+    
+    <ResponseField name="AREA" type="string">
+      Production area
+    </ResponseField>
+    
+    <ResponseField name="NP" type="string">
+      Part number
+    </ResponseField>
+    
+    <ResponseField name="MATERIAL" type="string">
+      Material description
+    </ResponseField>
+    
+    <ResponseField name="PESO" type="number">
+      Weight in kg
+    </ResponseField>
+    
+    <ResponseField name="COSTO" type="number">
+      Cost in USD
+    </ResponseField>
+    
+    <ResponseField name="CADENA" type="string">
+      Production chain
+    </ResponseField>
+    
+    <ResponseField name="TURNO" type="string">
+      Shift (A, B, C, etc.)
+    </ResponseField>
+    
+    <ResponseField name="TIPO" type="string">
+      Scrap type
+    </ResponseField>
+    
+    <ResponseField name="SUPERVISOR" type="string">
+      Supervisor identifier
+    </ResponseField>
+    
+    <ResponseField name="FECHA_REGISTRO" type="string">
+      Registration timestamp
+    </ResponseField>
+    
+    <ResponseField name="TOTAL_PZAS" type="string">
+      Total pieces
+    </ResponseField>
+    
+    <ResponseField name="MODO_FALLA" type="string">
+      Failure mode
+    </ResponseField>
+    
+    <ResponseField name="USUARIO_ID" type="number">
+      User who registered the record
+    </ResponseField>
+    
+    <ResponseField name="COMENTARIOS" type="string">
+      Comments
+    </ResponseField>
+    
+    <ResponseField name="FOTO" type="string">
+      Base64 encoded photo (if any)
+    </ResponseField>
+    
+    <ResponseField name="ELIMINADO" type="number">
+      0 = active, 1 = deleted
+    </ResponseField>
+    
+    <ResponseField name="CATEGORIA" type="string">
+      Scrap category
+    </ResponseField>
+    
+    <ResponseField name="UNIDAD" type="string">
+      Unit of measurement
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="total" type="number">
+  Total number of records matching the filters (before pagination)
+</ResponseField>
+
+<ResponseField name="limit" type="number">
+  Applied limit value
+</ResponseField>
+
+<ResponseField name="offset" type="number">
+  Applied offset value
+</ResponseField>
+
+### Success Response Example
+
+```json
+{
+  "data": [
+    {
+      "ID": 1234,
+      "AREA": "Ensamble",
+      "NP": "12345678",
+      "MATERIAL": "Conector A1",
+      "PESO": 2.5,
+      "COSTO": 45.75,
+      "CADENA": "GNT1",
+      "TURNO": "A",
+      "TIPO": "Producción",
+      "SUPERVISOR": "admin",
+      "FECHA_REGISTRO": "2024-03-15T14:30:00.000Z",
+      "TOTAL_PZAS": "150",
+      "MODO_FALLA": "Defecto de moldeo",
+      "USUARIO_ID": 1,
+      "COMENTARIOS": "Lote defectuoso",
+      "FOTO": null,
+      "ELIMINADO": 0,
+      "CATEGORIA": "Moldeo",
+      "UNIDAD": "kg",
+      "CADENA_ID": null,
+      "LINEA_ID": null,
+      "LINEA": null,
+      "UPDATED_AT": "2024-03-15T14:30:00.000Z"
+    }
+  ],
+  "total": 1523,
+  "limit": 100,
+  "offset": 0
+}
+```
+
+## Error Responses
+
+### 401 Unauthorized
+
+```json
+{
+  "error": "Token requerido"
+}
+```
+
+### 500 Internal Server Error
+
+```json
+{
+  "error": "Database connection failed"
+}
+```
+
+## Pagination Example
+
+<CodeGroup>
+```javascript Load More Pattern
+let offset = 0;
+const limit = 50;
+let allRecords = [];
+
+const loadMore = async () => {
+  const { data, total } = await fetchScrap({ limit, offset });
+  allRecords = [...allRecords, ...data];
+  offset += limit;
+  
+  return {
+    hasMore: offset < total,
+    records: data,
+    total
+  };
+};
+```
+
+```javascript Infinite Scroll
+const loadNextPage = async (currentPage = 0) => {
+  const pageSize = 100;
+  const offset = currentPage * pageSize;
+  
+  const response = await fetchScrap({ limit: pageSize, offset });
+  
+  return {
+    records: response.data,
+    currentPage,
+    totalPages: Math.ceil(response.total / pageSize),
+    hasNextPage: offset + pageSize < response.total
+  };
+};
+```
+</CodeGroup>
+
+## Search Behavior
+
+<Note>
+  The `search` parameter performs a case-insensitive partial match (LIKE) across multiple fields:
+  - Part Number (NP)
+  - Area (AREA)
+  - Material (MATERIAL)
+  - Failure Mode (MODO_FALLA)
+  - Supervisor (SUPERVISOR)
+</Note>
+
+## Performance Tips
+
+<Warning>
+  **Large Datasets:** When dealing with thousands of records, use smaller page sizes (limit=50) and implement pagination to avoid memory issues.
+</Warning>
+
+<Note>
+  **Indexing:** The database should have indexes on frequently filtered columns (AREA, TURNO, CADENA, FECHA_REGISTRO) for optimal performance.
+</Note>
+
+## Related Endpoints
+
+- [Create Scrap Record](/api/scrap/create) - Add new record
+- [Statistics](/api/reports/summary) - Get aggregated statistics
+- [Dashboard Stats](/api/reports/trends) - Get trend data

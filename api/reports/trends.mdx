@@ -1,0 +1,313 @@
+---
+title: 'Trend Analysis'
+api: 'GET /api/reports/trend'
+description: 'Get daily scrap trend data over time'
+---
+
+## Overview
+
+Retrieve scrap data aggregated by day to analyze trends over time. Useful for identifying patterns, spikes, and improvements.
+
+## Authentication
+
+Requires valid JWT token.
+
+```
+Authorization: Bearer <token>
+```
+
+## Query Parameters
+
+<ParamField query="dias" type="number" default={30}>
+  Number of days to look back from today
+</ParamField>
+
+## Request Example
+
+<CodeGroup>
+```bash cURL - Last 30 Days
+curl -X GET "http://localhost:3001/api/reports/trend?dias=30" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+```bash cURL - Last 90 Days
+curl -X GET "http://localhost:3001/api/reports/trend?dias=90" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+```javascript JavaScript
+const getTrend = async (days = 30) => {
+  const response = await fetch(
+    `http://localhost:3001/api/reports/trend?dias=${days}`,
+    {
+      headers: { 'Authorization': `Bearer ${getToken()}` }
+    }
+  );
+  
+  return await response.json();
+};
+
+// Get last 30 days
+const last30Days = await getTrend(30);
+
+// Get last quarter
+const lastQuarter = await getTrend(90);
+```
+
+```typescript TypeScript
+interface TrendData {
+  fecha: string; // YYYY-MM-DD
+  cantidad: number;
+  costo: number;
+}
+
+const getTrend = async (days: number = 30): Promise<TrendData[]> => {
+  const response = await fetch(
+    `http://localhost:3001/api/reports/trend?dias=${days}`,
+    {
+      headers: { 'Authorization': `Bearer ${getToken()}` }
+    }
+  );
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch trend data');
+  }
+  
+  return await response.json();
+};
+```
+</CodeGroup>
+
+## Response
+
+Returns an array of daily aggregates, sorted chronologically.
+
+<ResponseField name="fecha" type="string">
+  Date in YYYY-MM-DD format
+</ResponseField>
+
+<ResponseField name="cantidad" type="number">
+  Total pieces scrapped on this date
+</ResponseField>
+
+<ResponseField name="costo" type="number">
+  Total cost (USD) for this date
+</ResponseField>
+
+### Success Response Example
+
+```json
+[
+  {
+    "fecha": "2024-03-01",
+    "cantidad": 1247,
+    "costo": 3825.50
+  },
+  {
+    "fecha": "2024-03-02",
+    "cantidad": 982,
+    "costo": 2940.30
+  },
+  {
+    "fecha": "2024-03-03",
+    "cantidad": 1105,
+    "costo": 3215.75
+  },
+  {
+    "fecha": "2024-03-04",
+    "cantidad": 1420,
+    "costo": 4180.20
+  }
+]
+```
+
+## Line Chart Visualization
+
+```typescript
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
+
+const TrendChart: React.FC = () => {
+  const [data, setData] = useState<TrendData[]>([]);
+  const [days, setDays] = useState(30);
+  
+  useEffect(() => {
+    const fetchData = async () => {
+      const trend = await getTrend(days);
+      setData(trend);
+    };
+    fetchData();
+  }, [days]);
+  
+  return (
+    <div>
+      <h2>Scrap Trend</h2>
+      <select value={days} onChange={e => setDays(Number(e.target.value))}>
+        <option value={7}>Last 7 days</option>
+        <option value={30}>Last 30 days</option>
+        <option value={90}>Last 90 days</option>
+      </select>
+      
+      <LineChart width={800} height={400} data={data}>
+        <CartesianGrid strokeDasharray="3 3" />
+        <XAxis dataKey="fecha" />
+        <YAxis yAxisId="left" />
+        <YAxis yAxisId="right" orientation="right" />
+        <Tooltip />
+        <Legend />
+        <Line 
+          yAxisId="left"
+          type="monotone" 
+          dataKey="cantidad" 
+          stroke="#8884d8" 
+          name="Quantity"
+        />
+        <Line 
+          yAxisId="right"
+          type="monotone" 
+          dataKey="costo" 
+          stroke="#82ca9d" 
+          name="Cost ($)"
+        />
+      </LineChart>
+    </div>
+  );
+};
+```
+
+## Trend Analysis Functions
+
+### Calculate Moving Average
+
+```javascript
+const calculateMovingAverage = (data, windowSize = 7) => {
+  return data.map((point, index) => {
+    const start = Math.max(0, index - windowSize + 1);
+    const window = data.slice(start, index + 1);
+    const avg = window.reduce((sum, d) => sum + d.costo, 0) / window.length;
+    
+    return {
+      ...point,
+      movingAverage: avg
+    };
+  });
+};
+
+const trendData = await getTrend(30);
+const withMA = calculateMovingAverage(trendData, 7);
+```
+
+### Detect Anomalies
+
+```javascript
+const detectAnomalies = (data, threshold = 1.5) => {
+  const costs = data.map(d => d.costo);
+  const mean = costs.reduce((a, b) => a + b, 0) / costs.length;
+  const stdDev = Math.sqrt(
+    costs.map(x => Math.pow(x - mean, 2)).reduce((a, b) => a + b) / costs.length
+  );
+  
+  return data
+    .map(point => ({
+      ...point,
+      isAnomaly: Math.abs(point.costo - mean) > threshold * stdDev,
+      deviation: ((point.costo - mean) / stdDev).toFixed(2)
+    }))
+    .filter(point => point.isAnomaly);
+};
+
+const trendData = await getTrend(30);
+const anomalies = detectAnomalies(trendData);
+
+if (anomalies.length > 0) {
+  console.warn('⚠️ Anomalies detected:', anomalies);
+}
+```
+
+### Calculate Growth Rate
+
+```javascript
+const calculateGrowthRate = (data) => {
+  if (data.length < 2) return null;
+  
+  const firstWeek = data.slice(0, 7);
+  const lastWeek = data.slice(-7);
+  
+  const firstAvg = firstWeek.reduce((sum, d) => sum + d.costo, 0) / firstWeek.length;
+  const lastAvg = lastWeek.reduce((sum, d) => sum + d.costo, 0) / lastWeek.length;
+  
+  const growthRate = ((lastAvg - firstAvg) / firstAvg * 100).toFixed(1);
+  
+  return {
+    firstWeekAvg: firstAvg.toFixed(2),
+    lastWeekAvg: lastAvg.toFixed(2),
+    growthRate: `${growthRate}%`,
+    trend: growthRate > 0 ? 'increasing' : 'decreasing'
+  };
+};
+
+const trendData = await getTrend(30);
+const growth = calculateGrowthRate(trendData);
+console.log(`Scrap cost is ${growth.trend} by ${growth.growthRate}`);
+```
+
+## Sparkline Component
+
+```typescript
+const Sparkline: React.FC<{ days?: number }> = ({ days = 7 }) => {
+  const [data, setData] = useState<TrendData[]>([]);
+  
+  useEffect(() => {
+    getTrend(days).then(setData);
+  }, [days]);
+  
+  const max = Math.max(...data.map(d => d.costo));
+  const points = data
+    .map((d, i) => `${i * 10},${50 - (d.costo / max) * 40}`)
+    .join(' ');
+  
+  return (
+    <svg width="100" height="50" className="sparkline">
+      <polyline
+        points={points}
+        fill="none"
+        stroke="#8884d8"
+        strokeWidth="2"
+      />
+    </svg>
+  );
+};
+```
+
+## Fill Missing Dates
+
+```javascript
+const fillMissingDates = (data, days) => {
+  const result = [];
+  const dataMap = new Map(data.map(d => [d.fecha, d]));
+  
+  for (let i = 0; i < days; i++) {
+    const date = new Date();
+    date.setDate(date.getDate() - (days - 1 - i));
+    const dateStr = date.toISOString().split('T')[0];
+    
+    result.push(
+      dataMap.get(dateStr) || {
+        fecha: dateStr,
+        cantidad: 0,
+        costo: 0
+      }
+    );
+  }
+  
+  return result;
+};
+
+const rawData = await getTrend(30);
+const completeData = fillMissingDates(rawData, 30);
+```
+
+## Related Endpoints
+
+- [Summary Report](/api/reports/summary) - Aggregated statistics
+- [By Area Report](/api/reports/by-area) - Area breakdown
+- [Dashboard Stats](/api/scrap/list) - Real-time data
